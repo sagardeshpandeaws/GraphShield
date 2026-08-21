@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Runtime data (never commit client data)
+outputs/
+client_profiles/
+logs/
+inputs/
+evidence/
+*.enc
+
+# Secrets & keys
+*.pem
+*.key
+*.env
+
+# Branding (optional local assets)
+brand_logo/
+
+# Tooling
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
