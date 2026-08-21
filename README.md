@@ -29,21 +29,23 @@ MITRE ATT&CK-mapped checks (26 AD + 40 Azure), and generates:
 | Item | How to Get It |
 |------|---------------|
 | BloodHound CE | `docker compose up` — [BH CE Quickstart](https://github.com/SpecterOps/BloodHound) |
-| SharpHound data | `SharpHound.exe -c All` on a domain-joined machine |
+| SharpHound data | `SharpHound.exe -c All` on a domain-joined machine ([releases](https://github.com/BloodHoundAD/SharpHound/releases)) |
+| AzureHound data (optional) | `AzureHound.exe -c All` for Entra ID findings ([releases](https://github.com/BloodHoundAD/AzureHound/releases)) |
 | Python 3.10+ | python.org |
 | Docker Desktop | docker.com |
 
 ### Install & Run
 
 ```powershell
-git clone https://github.com/<you>/GraphShield.git
+git clone https://github.com/sagardeshpandeaws/GraphShield.git
 cd GraphShield
 pip install -r documents/requirements.txt
 scripts\Launch_App.bat        # or: streamlit run app.py
 ```
 
-Open http://localhost:8501, upload your SharpHound ZIP, connect to Neo4j,
-and generate reports. See [documents/QUICKSTART_GUIDE.md](documents/QUICKSTART_GUIDE.md).
+Open http://localhost:8501, upload your SharpHound ZIP (and AzureHound ZIP
+if assessing Entra ID), connect to Neo4j, and generate reports.
+See [documents/QUICKSTART_GUIDE.md](documents/QUICKSTART_GUIDE.md).
 
 ## Documentation
 
