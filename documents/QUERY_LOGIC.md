@@ -57,7 +57,7 @@ A **schema probe** runs at Neo4j connect time (`collectors/schema_probe.py`) —
 
 ---
 
-## Azure / Entra ID Findings (40)
+## Azure / Entra ID Findings (46)
 
 ### Group: Azure Core (20 findings)
 
@@ -114,6 +114,17 @@ A **schema probe** runs at Neo4j connect time (`collectors/schema_probe.py`) —
 | AZ-039 | Function/APIM Key Abuse | MEDIUM | Web apps/function apps with KV contributor access. Downstream key/data theft. | `az_function_key_abuse` |
 | AZ-040 | Privileged Access Group Escalation | HIGH | Users in groups nested into PAG groups. Local admin on devices via group membership. | `az_pag_escalation` |
 
+### Group: Non-Human Identity Governance (6 findings)
+
+| ID | Finding | Sev | What We Check & Why | Query Key |
+|---|---|---|---|---|
+| AZ-041 | Unowned Service Principals | HIGH | `AZServicePrincipal` with no `AZOwns` incoming edge. No accountable owner blocks credential rotation, CA assignment, and lifecycle management. | `az_sp_no_owner` |
+| AZ-042 | Orphaned Applications | HIGH | `AZApplication` with no incoming `AZOwns` edge. No owner means no authorized party to revoke credentials or modify consent grants. | `az_orphaned_app` |
+| AZ-043 | Over-Consented Applications | HIGH | `AZServicePrincipal` with `AZAppRoleAssignment` to `AZRoleDefinition` where permission type is `Role` (application, not delegated). Broad Graph API app permissions bypass user-context controls. | `az_overconsented_app` |
+| AZ-044 | Privileged SPs Without Conditional Access | CRITICAL | `AZServicePrincipal` with `AZHasRole` to `AZRoleDefinition` matching directory-role names AND no `CAApplicationCondition` linking to a CA policy. SPs with directory roles bypass conditional access. | `az_sp_privileged_no_ca` |
+| AZ-045 | User-Assigned Managed Identity Proliferation | MEDIUM | `AZServicePrincipal` with `AZManagedIdentity` incoming edge (user-assigned MI). Attachment count != 1 indicates identity sprawl or resource attachment drift. | `az_user_assigned_mi` |
+| AZ-046 | Stale Service Principals | MEDIUM | `AZServicePrincipal` where `TOINTEGER(lastcollected)` < 7776000000 (90 days). Decommissioned SPs retaining active credentials — lateral movement surface. | `az_stale_service_principal` |
+
 ---
 
 ## Assessment Groups
@@ -127,6 +138,7 @@ All queries are organized into 5 groups (`analytics/groups.py`). Group selection
 | Azure Core | 21 | AZ-001 → AZ-020 |
 | Zero Trust Review | 11 | AZ-021 → AZ-031 |
 | Architecture Simulation | 9 | AZ-032 → AZ-040 |
+| NHI Governance | 6 | AZ-041 → AZ-046 |
 
 **Note**: `az_managed_identity` query (Azure Core group) collects environment data but has no finding mapping — reserved for future use.
 
@@ -148,7 +160,7 @@ All queries are organized into 5 groups (`analytics/groups.py`). Group selection
 ## Cypher Files
 
 - `collectors/bloodhound_queries.py` — 26 AD queries (all with `LIMIT 15000`)
-- `collectors/azure_queries.py` — 41 Azure queries (all with `LIMIT 15000`)
+- `collectors/azure_queries.py` — 47 Azure queries (all with `LIMIT 15000`)
 - `collectors/schema_probe.py` — Runtime schema validation against expected labels and properties (per-group scope-aware)
 - `collectors/query_registry.py` — Query version management and S3 update pipeline
 

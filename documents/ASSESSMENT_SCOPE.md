@@ -1,6 +1,6 @@
 # GraphShield Hybrid Identity Security Assessment — Complete Scope of Coverage
 
-**Total: 66 findings** across 5 assessment groups (26 Active Directory + 40 Azure/Entra ID)
+**Total: 72 findings** across 6 assessment groups (26 Active Directory + 46 Azure/Entra ID)
 
 ---
 
@@ -115,6 +115,21 @@ Simulated attacker techniques against Entra ID to identify architectural weaknes
 
 ---
 
+## Group 6 — Non-Human Identity Governance (AZ-041 to AZ-046, 6 findings)
+
+Workload identity lifecycle governance — service principal ownership, application consent, managed identity proliferation, and privilege hygiene.
+
+| ID | Finding | Severity | What We Detect |
+|----|---------|----------|----------------|
+| AZ-041 | Unowned Service Principals | HIGH | Azure AD service principals with no assigned owner — impossible to determine accountability; blocks credential rotation, CA policy assignment, and lifecycle management |
+| AZ-042 | Orphaned Applications | HIGH | Applications where all registered owners are disabled, deleted, or ineligible — no qualified owner exists; risk of forgotten app credentials and unrevoked consent grants |
+| AZ-043 | Over-Consented Applications | HIGH | Service principals with Graph API permissions exceeding their intended scope — excessive consent grants enable data exfiltration or privilege escalation beyond the application's purpose |
+| AZ-044 | Privileged SPs Without Conditional Access | CRITICAL | Service principals holding directory-roles (Global Admin, Application Admin, etc.) with no conditional access scoping — any compromised credential inherits full role privileges without identity controls |
+| AZ-045 | User-Assigned Managed Identity Proliferation | MEDIUM | User-assigned managed identities attached to non-standard resource counts (0 or >1) — indicates identity sprawl or resource attachment drift from intended baseline |
+| AZ-046 | Stale Service Principals | MEDIUM | Service principals not collected in the last 90 days — likely decommissioned but retaining active credentials and role assignments; lateral movement surface if still enabled |
+
+---
+
 ## Summary
 
 | Group | Focus | Scope | Severity Range |
@@ -124,7 +139,8 @@ Simulated attacker techniques against Entra ID to identify architectural weaknes
 | 3 | Azure/Entra ID Core Assessment | 20 Azure (AZ-001–AZ-020) | CRITICAL–MEDIUM |
 | 4 | Zero Trust Identity Hardening Review | 11 Azure (AZ-021–AZ-031) | HIGH–MEDIUM |
 | 5 | Security Architecture Simulation | 9 Azure (AZ-032–AZ-040) | CRITICAL–MEDIUM |
-| **Total** | | **26 AD + 40 Azure = 66** | |
+| 6 | Non-Human Identity Governance | 6 Azure (AZ-041–AZ-046) | CRITICAL–MEDIUM |
+| **Total** | | **26 AD + 46 Azure = 72** | |
 
 Data source: BloodHound CE (Active Directory) + AzureHound (Entra ID) via Neo4j graph database. All findings are evidence-based using actual graph relationships and attack paths, not theoretical configuration checks.
 

@@ -68,7 +68,7 @@ This guide helps you set up everything needed to run the AD Security Assessment 
 4. Internet access (to download tools)
 
 **What the app does:** Connects to your BloodHound Neo4j database, reads AD attack path data,
-analyses it across 66 security categories, and generates professional reports.
+analyses it across 72 security categories, and generates professional reports.
 
 ---
 
