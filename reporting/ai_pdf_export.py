@@ -319,6 +319,13 @@ def export_ai_pdf(text, filename, findings=None, chains=None, risk=None, env_sta
             ["Week 3","Medium","Review managed identity token theft risks; audit function key permissions; review PAG (Privileged Access Group) escalation paths"],
             ["Week 4","Monitor","Deploy monitoring for token abuse patterns; schedule recurring architecture simulation reviews; document residual risks"],
         ],
+        "nhi_governance": [
+            ["Week","Focus","Actions"],
+            ["Week 1","Critical","Assign owners to all unowned service principals and app registrations; rotate credentials on over-consented and orphaned apps; remediate privileged SPs with broad Graph permissions"],
+            ["Week 2","High","Enable workload identity Conditional Access for privileged service principals; move permanent privileged SP roles to PIM-eligible; remove unused tenant-wide Graph scopes"],
+            ["Week 3","Medium","Transition user-assigned managed identities to system-assigned (or justify); add owner attestation workflows; enforce credential expiry via app management policies"],
+            ["Week 4","Monitor","Review stale/uncollected service principals for decommissioning; schedule quarterly NHI access reviews; deploy detection for SP credential and consent changes"],
+        ],
     }
 
     selected_groups = sorted({f.get("group") for f in (findings or []) if f.get("group")},

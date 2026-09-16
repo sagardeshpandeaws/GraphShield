@@ -72,6 +72,13 @@ class FindingBuilder:
         ("AZ_MI_TOKEN_THEFT", "Managed Identity Token Theft — Downstream Resource Access via Stolen MI Token", "az_mi_token_theft", "Azure", "az_arch_sim"),
         ("AZ_FUNCTION_KEY_ABUSE", "Azure Function / APIM Key Abuse — Leaked Keys to Key Vault Access", "az_function_key_abuse", "Azure", "az_arch_sim"),
         ("AZ_PAG_ESCALATION", "Privileged Access Group Escalation — Device Local Admin to Lateral Path", "az_pag_escalation", "Azure", "az_arch_sim"),
+        # ── Group: Non-Human Identity Governance ────────────────
+        ("AZ_SP_NO_OWNER", "Application Identity Without Owner — Ungoverned Service Principal", "az_sp_no_owner", "Azure", "nhi_governance"),
+        ("AZ_ORPHANED_APP", "Orphaned Application — All Owners Disabled or Deleted", "az_orphaned_app", "Azure", "nhi_governance"),
+        ("AZ_OVERCONSENTED_APP", "Over-Consented Service Principal — Broad Microsoft Graph Permissions", "az_overconsented_app", "Azure", "nhi_governance"),
+        ("AZ_SP_PRIVILEGED_NO_CA", "Privileged Service Principal — Outside Conditional Access Scope", "az_sp_privileged_no_ca", "Azure", "nhi_governance"),
+        ("AZ_USER_ASSIGNED_MI", "User-Assigned Managed Identities — Portable Workload Credentials", "az_user_assigned_mi", "Azure", "nhi_governance"),
+        ("AZ_STALE_SERVICE_PRINCIPAL", "Stale Service Principals — Dormant Identity Governance Gap", "az_stale_service_principal", "Azure", "nhi_governance"),
     ]
 
     def build(self, raw, selected_groups=None):

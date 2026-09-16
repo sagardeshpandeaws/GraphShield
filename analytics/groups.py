@@ -24,9 +24,14 @@ GROUPS = {
         "heading": "3",
         "report_title": "Security Architecture Simulation Report",
     },
+    "nhi_governance": {
+        "name": "Non-Human Identity Governance",
+        "heading": "4",
+        "report_title": "Non-Human Identity Governance Assessment Report",
+    },
 }
 
-GROUP_ORDER = ["ad_core", "ad_attack", "az_core", "az_zt_review", "az_arch_sim"]
+GROUP_ORDER = ["ad_core", "ad_attack", "az_core", "az_zt_review", "az_arch_sim", "nhi_governance"]
 
 GROUP_QUERY_KEYS = {
     "ad_core": {
@@ -60,6 +65,10 @@ GROUP_QUERY_KEYS = {
         "az_graph_api_abuse", "az_sync_account_compromise", "az_prt_token_abuse",
         "az_ca_bypass", "az_cross_tenant_auth_chain", "az_device_join_abuse",
         "az_mi_token_theft", "az_function_key_abuse", "az_pag_escalation",
+    },
+    "nhi_governance": {
+        "az_sp_no_owner", "az_orphaned_app", "az_overconsented_app",
+        "az_sp_privileged_no_ca", "az_user_assigned_mi", "az_stale_service_principal",
     },
 }
 

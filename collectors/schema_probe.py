@@ -21,6 +21,9 @@ GROUP_LABELS = {
         "AZConditionalAccessPolicy", "AZDevice", "AZManagedIdentity",
         "AZWebApp", "AZKeyVault", "AZGroup",
     },
+    "nhi_governance": {
+        "AZServicePrincipal", "AZApplication", "AZRoleDefinition",
+    },
 }
 
 # Properties to verify on specific labels (only checked when label is in active group's set)

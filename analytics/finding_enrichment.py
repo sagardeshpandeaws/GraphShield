@@ -498,6 +498,86 @@ def _process_azure_evidence(category, evidence, buckets, relationship_records):
                 rel = f"{user} -[MemberOf]-> {src} -[MemberOf*]-> {tgt}" if src else f"{user} -> {tgt}"
                 relationship_records.append({"text": rel, "entities": ent})
 
+    # ── Heading 4: Non-Human Identity Governance ────────────────
+    elif category == "AZ_SP_NO_OWNER":
+        for item in evidence:
+            name = _clean(item.get("Principal") or item.get("Application"))
+            app_id = item.get("AppId", "")
+            bucket, principal = _classify(name, item.get("PrincipalType"))
+            if principal:
+                buckets[bucket or "service_principals"].add(principal)
+                ent = _empty_buckets()
+                ent[bucket or "service_principals"].add(principal)
+                display = f"{principal} ({app_id})" if app_id else principal
+                relationship_records.append({"text": f"{display} - No owner assigned", "entities": ent})
+
+    elif category == "AZ_ORPHANED_APP":
+        for item in evidence:
+            app = _clean(item.get("Application"))
+            app_id = item.get("AppId", "")
+            owner_count = item.get("OwnerCount")
+            if app:
+                buckets["applications"].add(app)
+                ent = _empty_buckets()
+                ent["applications"].add(app)
+                display = f"{app} ({app_id})" if app_id else app
+                label = (f"Orphaned (owners={owner_count}, all disabled/deleted)"
+                         if owner_count is not None
+                         else "Orphaned (all owners disabled/deleted)")
+                relationship_records.append({"text": f"{display} - {label}", "entities": ent})
+
+    elif category == "AZ_OVERCONSENTED_APP":
+        for item in evidence:
+            principal = _clean(item.get("Principal") or item.get("AppDisplayName"))
+            app_id = item.get("AppId", "")
+            perm = item.get("GraphPermission", "")
+            if principal:
+                buckets["service_principals"].add(principal)
+                ent = _empty_buckets()
+                ent["service_principals"].add(principal)
+                display = f"{principal} ({app_id})" if app_id else principal
+                perm_str = f" -[{perm}]->" if perm else ""
+                relationship_records.append({"text": f"{display}{perm_str} Graph API (over-consented)", "entities": ent})
+
+    elif category == "AZ_SP_PRIVILEGED_NO_CA":
+        for item in evidence:
+            bucket, principal = _classify(item.get("Principal"), item.get("PrincipalType"))
+            role = item.get("Role", "")
+            if principal:
+                buckets[bucket or "service_principals"].add(principal)
+                ent = _empty_buckets()
+                ent[bucket or "service_principals"].add(principal)
+                role_str = f" -[{role}]" if role else ""
+                relationship_records.append({"text": f"{principal}{role_str} - privileged SP, no CA scope", "entities": ent})
+
+    elif category == "AZ_USER_ASSIGNED_MI":
+        for item in evidence:
+            identity = _clean(item.get("Identity"))
+            count = item.get("AttachedResourceCount", 0)
+            attached = [a for a in (item.get("AttachedTo", []) or []) if a]
+            if identity:
+                buckets["managed_identities"].add(identity)
+                ent = _empty_buckets()
+                ent["managed_identities"].add(identity)
+                if count == 0 or not attached:
+                    att_str = "unattached"
+                else:
+                    att_str = ", ".join(attached[:5])
+                    if len(attached) > 5:
+                        att_str += f" (+{len(attached) - 5} more)"
+                relationship_records.append({"text": f"{identity} - user-assigned MI (attached: {att_str})", "entities": ent})
+
+    elif category == "AZ_STALE_SERVICE_PRINCIPAL":
+        for item in evidence:
+            principal = _clean(item.get("Principal"))
+            last = item.get("LastCollected", "")
+            if principal:
+                buckets["service_principals"].add(principal)
+                ent = _empty_buckets()
+                ent["service_principals"].add(principal)
+                display = f"{principal} (last collected: {last})" if last else principal
+                relationship_records.append({"text": f"{display} - stale service principal", "entities": ent})
+
 
 def _empty_buckets():
     return {
@@ -2192,6 +2272,161 @@ An attacker exploiting PAG escalation may:
             "Entra ID Audit Log: Group membership changes for PAGs",
             "Windows Event Logs: Local group membership modifications",
             "Microsoft 365 Defender: Lateral movement path detections",
+        ],
+    },
+
+    # ── Heading 4: Non-Human Identity Governance ───────────────
+    "AZ_SP_NO_OWNER": {
+        "severity": "MEDIUM",
+        "mitre": {"id": "T1098", "tactic": "Persistence", "technique": "Account Manipulation"},
+        "impact": """
+Ungoverned application identities have no accountable owner to
+review permissions, rotate credentials, or respond to policy
+exceptions. An attacker who gains an owner-capable identity (or
+ADG permission) can silently take over ownerless applications —
+adding credentials, changing consent, or escalating the app's
+role assignments — and persist without an owner ever noticing.
+Common consequences:
+- Silent credential addition to unowned service principals
+- Application role escalation without governance oversight
+- Credential rotation gaps (expired or breached secrets)
+""",
+        "remediation": [
+            "Assign at least one owner to every AZApplication and AZServicePrincipal",
+            "Rotate credentials for ownerless SPs before adding owners",
+            "Enable Microsoft Entra app consent and owner approval workflows",
+            "Use entitlement management / access reviews to attest application ownership quarterly",
+            "Decommission ownerless apps that cannot be justified",
+        ],
+        "detection": [
+            "Entra ID Audit Log: Application owner add (performed by non-owner)",
+            "Entra ID Audit Log: App role assignment changes on unowned apps",
+            "Microsoft 365 Defender: Suspicious application consent / credential addition alerts",
+        ],
+    },
+    "AZ_ORPHANED_APP": {
+        "severity": "MEDIUM",
+        "mitre": {"id": "T1098.002", "tactic": "Persistence", "technique": "Additional Cloud Credentials"},
+        "impact": """
+Apps whose owners are disabled or deleted are governance orphans
+— no human monitors them. Existing credentials remain live even
+though the ownership chain is broken. An orphaned app can be
+seized by any attacker with an owner-add capability, granting
+unauthorized control over the application and its backing service
+principal without triggering an ownership-change alert because
+there was no owner to alert.
+""",
+        "remediation": [
+            "Re-assign an enabled owner to every orphaned app registration",
+            "Review and rotate credentials on orphaned apps before re-owning",
+            "Disable or decommission orphaned apps with no business justification",
+            "Alert on ownerless/disabled-owner apps via app access reviews",
+            "Require owner attestation as part of quarterly governance",
+        ],
+        "detection": [
+            "Entra ID Audit Log: Owner removal events on applications",
+            "Entra ID Audit Log: Application credential additions by non-owners",
+            "Identity Protection: Orphaned application anomalies",
+        ],
+    },
+    "AZ_OVERCONSENTED_APP": {
+        "severity": "HIGH",
+        "mitre": {"id": "T1098.001", "tactic": "Persistence", "technique": "Additional Cloud Credentials"},
+        "impact": """
+App-only permissions operate as the application, bypassing MFA
+and Conditional Access. A service principal holding broad Graph
+write scopes can read/write the directory, mailboxes, or files
+with the same reach as the permission name implies, with no
+per-user challenge. If the SP credential is stolen (secret, cert,
+or token), the attacker inherits the full permission width and
+can move from mailbox/folder access to directory-wide manipulation.
+""",
+        "remediation": [
+            "Audit every SP with the listed permission scopes and remove unused scopes",
+            "Replace broad All-scoped permissions with role-based access via app roles or OAuth scoping",
+            "Restrict high-privilege Graph permissions to approval-gated app registrations",
+            "Apply Conditional Access for workload identities when available",
+            "Rotate credentials for any SP found over-consented",
+        ],
+        "detection": [
+            "Microsoft Graph API logs: Application-only calls for listed permission scopes",
+            "Entra ID Audit Log: App role assignment additions",
+            "Microsoft 365 Defender: High-risk app permission alerts",
+        ],
+    },
+    "AZ_SP_PRIVILEGED_NO_CA": {
+        "severity": "HIGH",
+        "mitre": {"id": "T1098.003", "tactic": "Defense Evasion", "technique": "Conditional Access Policies"},
+        "impact": """
+Service principals authenticating with app-only credentials are
+not subject to standard user MFA, and unless explicitly covered
+by workload-identity Conditional Access they inherit the full
+directory role at token issuance. A stolen SP secret or
+certificate directly grants Global Administrator-class
+capabilities with no step-up challenge — one of the
+highest-likelihood takeover paths in a tenant.
+""",
+        "remediation": [
+            "Configure workload identity Conditional Access policies covering these service principals",
+            "Move SPs from permanently assigned roles to PIM-eligible (activation via PIM for service principals)",
+            "Scope app roles to least privilege instead of tenant-wide directory roles",
+            "Enforce certificate-based, short-lived credentials; ban client secrets for privileged SPs",
+            "Explicitly claim these SPs as exceptions only where CA/just-in-time controls exist",
+        ],
+        "detection": [
+            "Entra ID Sign-in logs: SP token issuance outside expected CA scope",
+            "Entra ID Audit Log: SP role assignment changes",
+            "Microsoft 365 Defender: Anomalous workload-authenticated activity",
+        ],
+    },
+    "AZ_USER_ASSIGNED_MI": {
+        "severity": "MEDIUM",
+        "mitre": {"id": "T1528", "tactic": "Credential Access", "technique": "Steal Application Access Token"},
+        "impact": """
+User-assigned managed identities are tenant-scoped identities
+detached from any single VM lifecycle — the same credential can
+be bolted onto any resource, making a stolen MI token replayable
+from multiple compute contexts and surviving the deletion or
+recreation of any one attached resource. Unlike system-assigned
+identities, they are independently listable, assignable, and — if
+misconfigured (no RBAC, ownerless) — portable by an attacker to
+arbitrary workloads.
+""",
+        "remediation": [
+            "Prefer system-assigned managed identities unless a shared-identity pattern is explicitly required",
+            "Restrict which identities can be assigned by users (consent via Microsoft Entra + ARM policy)",
+            "Scope user-assigned MI RBAC assignments to the minimum resources",
+            "Rotate user-assigned MI certificates and monitor credential usage",
+            "Review unattached user-assigned MIs quarterly (they still hold RBAC in AzureHound)",
+        ],
+        "detection": [
+            "Azure activity log: Identity assignment to new resources",
+            "IMDS/token endpoint call logging across attached VMs",
+            "Microsoft 365 Defender: Token-borrowing / MI token anomalies",
+        ],
+    },
+    "AZ_STALE_SERVICE_PRINCIPAL": {
+        "severity": "LOW",
+        "mitre": {"id": "T1078.004", "tactic": "Persistence", "technique": "Cloud Roles"},
+        "impact": """
+Stale or uncollected service principals are forgotten identities
+that keep valid secrets and role assignments. They evade
+monitoring simply by never appearing in recent collection, yet
+remain usable for authentication and token acquisition — a
+low-cost persistence/backdoor vector that typically survives
+cleanups because nobody remembers it exists.
+""",
+        "remediation": [
+            "Review every SP older than 90 days of collection and remove or disable",
+            "Enforce credential expiry via app management policies (max lifetime for secrets/certs)",
+            "Require owner attestation for SPs at quarterly access reviews",
+            "Re-run azcollect and confirm disappearing SPs are deleted, not uncollected",
+            "Deprovision SPs that predate their last documented use",
+        ],
+        "detection": [
+            "Entra ID Audit Log: SP authentication for accounts absent from recent collection",
+            "Microsoft Graph sign-in logs: principal lastSignInDateTime gap analysis",
+            "Microsoft 365 Defender: Orphaned identity alerts",
         ],
     },
 }

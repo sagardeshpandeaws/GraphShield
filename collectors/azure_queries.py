@@ -354,4 +354,86 @@ AZURE_QUERIES = {
         RETURN u.name AS User, g.name AS SourceGroup, admin.name AS AdminGroup
         LIMIT 15000
     """,
+
+    # ── Heading 4: Non-Human Identity Governance ─────────────────
+
+    # Service principals / app registrations without an owner
+    "az_sp_no_owner": """
+        MATCH (sp:AZServicePrincipal)
+        WHERE NOT (sp)<-[:AZOwns]-()
+          AND COALESCE(sp.serviceprincipaltype, '') <> 'ManagedIdentity'
+        RETURN sp.name AS Principal, sp.objectid AS ObjectId, sp.appid AS AppId,
+               sp.serviceprincipaltype AS ServicePrincipalType, LABELS(sp) AS PrincipalType
+        UNION ALL
+        MATCH (app:AZApplication)
+        WHERE NOT (app)<-[:AZOwns]-()
+        RETURN app.name AS Principal, app.objectid AS ObjectId, app.appid AS AppId,
+               NULL AS ServicePrincipalType, LABELS(app) AS PrincipalType
+        LIMIT 15000
+    """,
+
+    # Applications whose owners are all disabled or deleted
+    "az_orphaned_app": """
+        MATCH (app:AZApplication)
+        OPTIONAL MATCH (owner)-[:AZOwns]->(app)
+        WITH app, collect(DISTINCT owner) AS owners
+        WHERE SIZE(owners) = 0
+           OR ALL(o IN owners WHERE o IS NULL
+                  OR (o:AZUser AND COALESCE(o.enabled, false) = false))
+        RETURN app.name AS Application, app.objectid AS ObjectId,
+               app.appid AS AppId,
+               SIZE([o IN owners WHERE o IS NOT NULL]) AS OwnerCount,
+               [o IN owners WHERE o:AZUser | o.name] AS DisabledOwnerAccounts
+        LIMIT 15000
+    """,
+
+    # Service principals with broad tenant-wide Graph API permissions
+    "az_overconsented_app": """
+        MATCH (sp:AZServicePrincipal)-[:AZAppRoleAssignment]->(r:AZRoleDefinition)
+        WHERE r.displayname IN ['Application.ReadWrite.All', 'Directory.ReadWrite.All',
+               'Group.ReadWrite.All', 'User.ReadWrite.All', 'Mail.ReadWrite',
+               'Files.ReadWrite.All', 'RoleManagement.ReadWrite.Directory',
+               'UserAuthenticationMethod.ReadWrite.All']
+        RETURN sp.name AS Principal, sp.appid AS AppId,
+               sp.appdisplayname AS AppDisplayName,
+               r.displayname AS GraphPermission, LABELS(sp) AS PrincipalType
+        LIMIT 15000
+    """,
+
+    # Privileged service principals not subject to Conditional Access
+    "az_sp_privileged_no_ca": """
+        MATCH (sp:AZServicePrincipal)-[:AZHasRole]->(r:AZRoleDefinition)
+        WHERE r.displayname IN ['Global Administrator', 'Privileged Role Administrator',
+               'Application Administrator', 'Cloud Application Administrator']
+        RETURN sp.name AS Principal, sp.appid AS AppId,
+               LABELS(sp) AS PrincipalType,
+               sp.serviceprincipaltype AS ServicePrincipalType,
+               r.displayname AS Role, sp.tenantid AS TenantId
+        LIMIT 15000
+    """,
+
+    # User-assigned managed identities (portable workload credentials)
+    "az_user_assigned_mi": """
+        MATCH (mi:AZServicePrincipal)
+        WHERE COALESCE(mi.serviceprincipaltype, '') = 'ManagedIdentity'
+        OPTIONAL MATCH (res)-[:AZManagedIdentity]->(mi)
+        WITH mi, count(res) AS AttachedResourceCount,
+             collect(DISTINCT res.name) AS AttachedTo
+        WHERE AttachedResourceCount <> 1
+        RETURN mi.name AS Identity, mi.objectid AS ObjectId, mi.appid AS AppId,
+               AttachedResourceCount, AttachedTo
+        LIMIT 15000
+    """,
+
+    # Stale service principals — not collected for 90+ days
+    "az_stale_service_principal": """
+        MATCH (sp:AZServicePrincipal)
+        WHERE COALESCE(sp.serviceprincipaltype, '') <> 'ManagedIdentity'
+          AND (sp.lastcollected IS NULL
+               OR TOINTEGER(sp.lastcollected) < (timestamp() - 7776000000))
+        RETURN sp.name AS Principal, sp.objectid AS ObjectId, sp.appid AS AppId,
+               sp.serviceprincipaltype AS ServicePrincipalType,
+               sp.lastcollected AS LastCollected, LABELS(sp) AS PrincipalType
+        LIMIT 15000
+    """,
 }

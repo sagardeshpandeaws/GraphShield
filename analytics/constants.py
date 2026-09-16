@@ -73,6 +73,14 @@ COMPLIANCE_MAP = {
     "AZ_MI_TOKEN_THEFT": {"CIS": "6.1", "NIST": "PR.AA-02", "ISO 27001": "8.2, 8.3, 8.5", "SA 315": "IT-3/ITDMC", "DPDP": "9(1)"},
     "AZ_FUNCTION_KEY_ABUSE": {"CIS": "6.1", "NIST": "PR.AA-02", "ISO 27001": "8.2, 8.3, 8.5", "SA 315": "IT-3/ITDMC", "DPDP": "9(1)"},
     "AZ_PAG_ESCALATION": {"CIS": "5.4", "NIST": "PR.AA-02", "ISO 27001": "5.15, 8.2", "SA 315": "IT-1/GITC", "DPDP": "6(1)"},
+
+    # ── Non-Human Identity Governance ──────────────────────────
+    "AZ_SP_NO_OWNER": {"CIS": "6.1", "NIST": "PR.AA-03", "ISO 27001": "8.2, 8.3, 8.5", "SA 315": "IT-3/ITDMC", "DPDP": "9(1)"},
+    "AZ_ORPHANED_APP": {"CIS": "6.1", "NIST": "PR.AA-03", "ISO 27001": "8.2, 8.3, 8.5", "SA 315": "IT-3/ITDMC", "DPDP": "9(1)"},
+    "AZ_OVERCONSENTED_APP": {"CIS": "6.1", "NIST": "PR.AA-02", "ISO 27001": "8.2, 8.3, 8.5", "SA 315": "IT-1/GITC", "DPDP": "6(1)"},
+    "AZ_SP_PRIVILEGED_NO_CA": {"CIS": "6.3", "NIST": "PR.AA-03", "ISO 27001": "5.15, 5.16", "SA 315": "IT-1/GITC", "DPDP": "6(1)"},
+    "AZ_USER_ASSIGNED_MI": {"CIS": "6.1", "NIST": "PR.AA-02", "ISO 27001": "8.2, 8.3, 8.5", "SA 315": "IT-3/ITDMC", "DPDP": "9(1)"},
+    "AZ_STALE_SERVICE_PRINCIPAL": {"CIS": "6.8", "NIST": "PR.AA-03", "ISO 27001": "5.15, 5.16, 8.2", "SA 315": "IT-1/GITC", "DPDP": "6(1)"},
 }
 EXCLUSIONS_MAP = {
     "TIER0_PATHS": [
@@ -346,6 +354,38 @@ EXCLUSIONS_MAP = {
         "Users who are members of device admin groups but lack interactive logon",
         "Groups with local admin scope limited to specific VMs (not any device)",
         "PAG membership via PIM-eligible role (requires activation, not permanent)",
+    ],
+
+    # ── Non-Human Identity Governance ──────────────────────────
+    "AZ_SP_NO_OWNER": [
+        "First-party Microsoft service principals (appownerorganizationid matches Microsoft)",
+        "System-assigned managed identities (no owner by design)",
+        "Service principals whose linked AZApplication already has an owner",
+    ],
+    "AZ_ORPHANED_APP": [
+        "First-party Microsoft applications",
+        "Apps already flagged by AZ_SP_NO_OWNER (deduplication)",
+        "Apps with active re-ownership workflow in progress",
+    ],
+    "AZ_OVERCONSENTED_APP": [
+        "First-party Microsoft applications with delegated (user-consented) permissions",
+        "Applications with permissions scoped to specific directory roles or admin units",
+        "Permissions in 'disabled' or 'pending' state",
+    ],
+    "AZ_SP_PRIVILEGED_NO_CA": [
+        "Built-in Microsoft service principals",
+        "Break-glass emergency access principals",
+        "Workload identities documented as covered by CA policy exclusions",
+    ],
+    "AZ_USER_ASSIGNED_MI": [
+        "User-assigned MIs with no role assignments",
+        "System-assigned managed identities (single-attachment, lifecycle-bound)",
+        "Documented shared-infrastructure patterns with justified multiple attachment",
+    ],
+    "AZ_STALE_SERVICE_PRINCIPAL": [
+        "First-party Microsoft service principals",
+        "System-assigned managed identities (lifecycle-bound to a resource)",
+        "SPs with recent sign-in activity in enrichment data",
     ],
 }
 
