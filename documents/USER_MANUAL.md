@@ -125,7 +125,7 @@ The main dashboard shows:
 - Each finding has tabs:
   - **Business Impact**: Risk analysis and detection strategies
   - **Remediation**: Step-by-step fix instructions
-  - **Compliance**: CIS Controls v8.1 / NIST CSF 2.0 / ISO 27001:2022 / SA 315 / DPDP Act mappings
+  - **Compliance**: CIS Controls v8.1 / NIST CSF 2.0 / ISO 27001:2022 / SA 315 / DPDP Act / OWASP NHI Top 10 mappings
   - **Exclusions**: Limitations and conditions for each finding
   - **Targeted Assets**: Specific users, groups, computers, service principals, managed identities, applications, key vaults, tenants affected
 - **Attack Chains**: Evaluated attack paths (AD-only + hybrid AD–Azure) with severity ratings

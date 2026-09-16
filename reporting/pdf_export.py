@@ -514,13 +514,13 @@ def export_pdf(findings, chains, output, client_config=None, risk=None, env_stat
     scope_env_text = " and ".join(scope_env_parts) if scope_env_parts else "Active Directory and Azure/Entra ID"
     story.append(Paragraph(
         f"The assessment covers the {scope_env_text} environment using BloodHound SharpHound & AzureHound data and Neo4j graph "
-        "analysis. Findings are aligned with MITRE ATT&amp;CK and mapped to NIST CSF 2.0, CIS Controls v8.1, ISO/IEC 27001:2022, SA 315 (ICAI), and DPDP Act 2023.",
+        "analysis. Findings are aligned with MITRE ATT&amp;CK and mapped to NIST CSF 2.0, CIS Controls v8.1, ISO/IEC 27001:2022, SA 315 (ICAI), DPDP Act 2023, and OWASP NHI Top 10 (2025).",
         cust["BodyJ"]
     ))
     story.append(Spacer(1, 6))
     story.append(Paragraph("<b>Frameworks Referenced</b>", cust["SectionH2"]))
     for fw in ["MITRE ATT&CK v14", "NIST CSF 2.0", "CIS Controls v8.1",
-               "ISO/IEC 27001:2022", "SA 315 (ICAI)", "DPDP Act 2023"]:
+               "ISO/IEC 27001:2022", "SA 315 (ICAI)", "DPDP Act 2023", "OWASP NHI Top 10 (2025)"]:
         story.append(Paragraph(f"&bull;  {fw}", cust["BodyJ"]))
     story.append(PageBreak())
 
@@ -862,10 +862,11 @@ def export_pdf(findings, chains, output, client_config=None, risk=None, env_stat
 
     # â”€â”€â”€ 8. COMPLIANCE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     story.append(Paragraph("8. Compliance Mapping", cust["SectionH1"]))
-    story.append(Paragraph("Each finding mapped to CIS Controls v8.1, NIST CSF 2.0, ISO/IEC 27001:2022, SA 315 (ICAI), and DPDP Act 2023.", cust["BodyJ"]))
+    story.append(Paragraph("Each finding mapped to CIS Controls v8.1, NIST CSF 2.0, ISO/IEC 27001:2022, SA 315 (ICAI), DPDP Act 2023, and OWASP NHI Top 10 (2025).", cust["BodyJ"]))
     cr = [[Paragraph("<b>Control</b>",cust["BodySmall"]),Paragraph("<b>CIS Controls v8.1</b>",cust["BodySmall"]),
            Paragraph("<b>NIST CSF 2.0</b>",cust["BodySmall"]),Paragraph("<b>ISO/IEC 27001:2022</b>",cust["BodySmall"]),
-           Paragraph("<b>SA 315 (ICAI)</b>",cust["BodySmall"]),Paragraph("<b>DPDP Act 2023</b>",cust["BodySmall"])]]
+           Paragraph("<b>SA 315 (ICAI)</b>",cust["BodySmall"]),Paragraph("<b>DPDP Act 2023</b>",cust["BodySmall"]),
+           Paragraph("<b>OWASP NHI Top 10 (2025)</b>",cust["BodySmall"])]]
     _active_ids = {f["id"] for f in findings if f.get("id")}
     for fid, m in COMPLIANCE_MAP.items():
         if fid not in _active_ids:
@@ -875,8 +876,9 @@ def export_pdf(findings, chains, output, client_config=None, risk=None, env_stat
                    Paragraph(m.get("NIST","-"),cust["BodySmall"]),
                    Paragraph(m.get("ISO 27001","-"),cust["BodySmall"]),
                    Paragraph(m.get("SA 315","-"),cust["BodySmall"]),
-                   Paragraph(m.get("DPDP","-"),cust["BodySmall"])])
-    ctable = Table(cr, colWidths=[110,55,65,65,50,50])
+                   Paragraph(m.get("DPDP","-"),cust["BodySmall"]),
+                   Paragraph(m.get("OWASP NHI","-"),cust["BodySmall"])])
+    ctable = Table(cr, colWidths=[110,55,65,65,50,50,50])
     ctable.setStyle(TableStyle([
         ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#1e3a5f")),
         ("TEXTCOLOR",(0,0),(-1,0),colors.white),

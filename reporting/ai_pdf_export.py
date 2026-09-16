@@ -380,7 +380,7 @@ def export_ai_pdf(text, filename, findings=None, chains=None, risk=None, env_sta
     content.append(Paragraph(
         f"Assessment conducted using BloodHound Community Edition (SharpHound + Neo4j). "
         f"Findings aligned with MITRE ATT&CK v14, NIST CSF 2.0, CIS Controls v8.1, "
-        f"ISO/IEC 27001:2022, SA 315 (ICAI), and DPDP Act 2023. "
+        f"ISO/IEC 27001:2022, SA 315 (ICAI), DPDP Act 2023, and OWASP NHI Top 10 (2025). "
         f"{_total_findings} finding types evaluated ({_ad_count} AD + {_az_count} Azure/Entra ID); those without evidence marked [NO DATA].",
         BS
     ))

@@ -152,4 +152,4 @@ Workload identity lifecycle governance — service principal ownership, applicat
 
 Data source: BloodHound CE (Active Directory) + AzureHound (Entra ID) via Neo4j graph database. All findings are evidence-based using actual graph relationships and attack paths, not theoretical configuration checks.
 
-Compliance mappings available: CIS Controls, NIST Cybersecurity Framework, ISO 27001, SA 315 (ICAI), DPDP Act 2023.
+Compliance mappings available: CIS Controls, NIST Cybersecurity Framework, ISO 27001, SA 315 (ICAI), DPDP Act 2023, OWASP NHI Top 10 (applied to workload-identity findings).

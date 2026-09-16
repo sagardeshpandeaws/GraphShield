@@ -114,6 +114,42 @@ class TestComplianceMap:
                 assert key in entry, f"{fid} missing {key}"
 
 
+OWASP_REQUIRED_IDS = [
+    "AZ_ADD_SECRET", "AZ_ADD_OWNER", "AZ_KEY_VAULT_ABUSE", "AZ_MANAGED_IDENTITY",
+    "AZ_SP_OVERSIGHT",
+    "AZ_GRAPH_API_ABUSE", "AZ_SYNC_ACCOUNT_COMPROMISE", "AZ_PRT_TOKEN_ABUSE",
+    "AZ_DEVICE_JOIN_ABUSE", "AZ_MI_TOKEN_THEFT", "AZ_FUNCTION_KEY_ABUSE",
+    "AZ_PAG_ESCALATION",
+    "AZ_SP_NO_OWNER", "AZ_ORPHANED_APP", "AZ_OVERCONSENTED_APP",
+    "AZ_SP_PRIVILEGED_NO_CA", "AZ_USER_ASSIGNED_MI", "AZ_STALE_SERVICE_PRINCIPAL",
+    "AZ_SP_DISABLED_PRIVILEGED", "AZ_SP_SINGLE_OWNER", "AZ_SP_OWNER_DISABLED",
+    "AZ_STALE_MANAGED_IDENTITY", "AZ_STALE_DEVICE", "AZ_SP_COMBINED_PRIVILEGES",
+    "AZ_SP_OWNER_GROUP", "AZ_SP_LEGACY_TYPE",
+]
+
+NHI_CATEGORIES = {f"NHI{i}:2025" for i in range(1, 11)}
+
+
+class TestOwaspNhiCompliance:
+    def test_owasp_key_present_where_applicable(self):
+        for fid in OWASP_REQUIRED_IDS:
+            assert "OWASP NHI" in COMPLIANCE_MAP[fid], f"{fid} missing OWASP NHI mapping"
+
+    def test_owasp_values_reference_valid_categories(self):
+        for fid in OWASP_REQUIRED_IDS:
+            value = COMPLIANCE_MAP[fid]["OWASP NHI"]
+            assert value.strip(), f"{fid} has empty OWASP NHI mapping"
+            for token in value.split(","):
+                token = token.strip()
+                assert token in NHI_CATEGORIES, f"{fid} invalid OWASP NHI reference: {token}"
+
+    def test_owasp_scoped_to_workload_identities(self):
+        for fid in ALL_IDS:
+            if fid not in OWASP_REQUIRED_IDS:
+                assert "OWASP NHI" not in COMPLIANCE_MAP[fid], \
+                    f"{fid} has OWASP NHI mapping but is not a workload-identity finding"
+
+
 class TestExclusionsMap:
     def test_exclusions_map_has_all_ids(self):
         for fid in ALL_IDS:

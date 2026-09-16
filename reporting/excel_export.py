@@ -353,7 +353,7 @@ def export_excel(findings, chains, filepath=None, client_config=None, risk=None,
         "Finding ID", "Title", "Severity", "Confidence", "Source",
         "Group",
         "MITRE ID", "MITRE Technique", "MITRE Tactic",
-        "CIS Controls v8.1", "NIST CSF 2.0", "ISO/IEC 27001:2022",
+        "CIS Controls v8.1", "NIST CSF 2.0", "ISO/IEC 27001:2022", "OWASP NHI Top 10 (2025)",
         "Affected Objects",
         "Impact", "Recommended Action", "Detection Strategy",
         "Action Taken", "Status", "Owner", "Due Date", "Notes"
@@ -451,6 +451,7 @@ def export_excel(findings, chains, filepath=None, client_config=None, risk=None,
             comp.get("CIS", ""),
             comp.get("NIST", ""),
             comp.get("ISO 27001", ""),
+            comp.get("OWASP NHI", ""),
             affected,
             f.get("impact", ""),
             "\n".join(f.get("remediation", [])),
@@ -463,9 +464,9 @@ def export_excel(findings, chains, filepath=None, client_config=None, risk=None,
         ]
         for ci, val in enumerate(row_data, 1):
             cell = ws_reg.cell(row=r, column=ci, value=val)
-            if ci == 18:  # Status column
+            if ci == 19:  # Status column
                 dv.add(cell)
-            if ci == 20:  # Due Date column
+            if ci == 21:  # Due Date column
                 dd_dv.add(cell)
         sev_order.append(f.get("severity", ""))
         r += 1
@@ -489,17 +490,17 @@ def export_excel(findings, chains, filepath=None, client_config=None, risk=None,
                         font=Font(color="9C0006")))
         # Highlight Closed status rows green (col R)
         ws_reg.conditional_formatting.add(data_range,
-            FormulaRule(formula=[f'$R{reg_header_row + 1}="Closed"'],
+            FormulaRule(formula=[f'$S{reg_header_row + 1}="Closed"'],
                         fill=PatternFill("solid", fgColor="C6EFCE"),
                         font=Font(color="006100")))
         # Highlight Accepted Risk rows gray (col R)
         ws_reg.conditional_formatting.add(data_range,
-            FormulaRule(formula=[f'$R{reg_header_row + 1}="Accepted Risk"'],
+            FormulaRule(formula=[f'$S{reg_header_row + 1}="Accepted Risk"'],
                         fill=PatternFill("solid", fgColor="D9D9D9"),
                         font=Font(color="333333")))
         # Highlight In Progress rows yellow (col R)
         ws_reg.conditional_formatting.add(data_range,
-            FormulaRule(formula=[f'$R{reg_header_row + 1}="In Progress"'],
+            FormulaRule(formula=[f'$S{reg_header_row + 1}="In Progress"'],
                         fill=PatternFill("solid", fgColor="FFEB9C"),
                         font=Font(color="9C6500")))
 
@@ -511,12 +512,12 @@ def export_excel(findings, chains, filepath=None, client_config=None, risk=None,
 
     _auto_width(ws_reg, reg_cols, 60)
     # Make certain columns wider
-    for ci in [1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]:
+    for ci in [1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]:
         letter = get_column_letter(ci)
         if ws_reg.column_dimensions[letter].width < 40:
             ws_reg.column_dimensions[letter].width = 40
     # Extra width for long text columns
-    for ci in [13, 15, 16]:
+    for ci in [14, 16, 17]:
         ws_reg.column_dimensions[get_column_letter(ci)].width = 55
 
     # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -559,7 +560,7 @@ def export_excel(findings, chains, filepath=None, client_config=None, risk=None,
     ws_cm = wb.create_sheet("Compliance")
     ws_cm.sheet_properties.tabColor = NAVY
 
-    cm_headers = ["Finding ID", "Finding Title", "Severity", "CIS Controls v8.1", "NIST CSF 2.0", "ISO/IEC 27001:2022", "SA 315 (ICAI)", "DPDP Act 2023"]
+    cm_headers = ["Finding ID", "Finding Title", "Severity", "CIS Controls v8.1", "NIST CSF 2.0", "ISO/IEC 27001:2022", "SA 315 (ICAI)", "DPDP Act 2023", "OWASP NHI Top 10 (2025)"]
     cm_cols = len(cm_headers)
     r = _write_title(ws_cm, "Compliance Framework Mapping", client_name, 1, cm_cols)
 
@@ -581,7 +582,7 @@ def export_excel(findings, chains, filepath=None, client_config=None, risk=None,
             fid_c = f"AD-{ac_n:03d}"
         row_data = [fid_c, f.get("title", ""), f.get("severity", ""),
                     comp.get("CIS", ""), comp.get("NIST", ""), comp.get("ISO 27001", ""),
-                    comp.get("SA 315", ""), comp.get("DPDP", "")]
+                    comp.get("SA 315", ""), comp.get("DPDP", ""), comp.get("OWASP NHI", "")]
         for ci, val in enumerate(row_data, 1):
             ws_cm.cell(row=r, column=ci, value=val)
         r += 1

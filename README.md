@@ -6,7 +6,7 @@ assessment reports for **Active Directory** and **Microsoft Entra ID (Azure)**.
 It connects directly to your BloodHound CE Neo4j database, runs 80
 MITRE ATT&CK-mapped checks (26 AD + 54 Azure), and generates:
 
-- Full PDF assessment report with compliance mapping (NIST CSF, CIS, ISO 27001, SA 315, DPDP Act)
+- Full PDF assessment report with compliance mapping (NIST CSF, CIS, ISO 27001, SA 315, DPDP Act, OWASP NHI Top 10)
 - Excel audit workbook with findings register and remediation tracking
 - CSV findings export + machine-readable JSON evidence
 - Interactive attack-path graph (HTML)
