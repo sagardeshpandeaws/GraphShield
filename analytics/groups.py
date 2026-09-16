@@ -69,6 +69,9 @@ GROUP_QUERY_KEYS = {
     "nhi_governance": {
         "az_sp_no_owner", "az_orphaned_app", "az_overconsented_app",
         "az_sp_privileged_no_ca", "az_user_assigned_mi", "az_stale_service_principal",
+        "az_sp_disabled_privileged", "az_sp_single_owner", "az_sp_owner_disabled",
+        "az_stale_managed_identity", "az_stale_device", "az_sp_combined_privileges",
+        "az_sp_owner_group", "az_sp_legacy_type",
     },
 }
 

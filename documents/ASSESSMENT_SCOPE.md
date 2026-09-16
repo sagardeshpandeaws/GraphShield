@@ -1,6 +1,6 @@
 # GraphShield Hybrid Identity Security Assessment — Complete Scope of Coverage
 
-**Total: 72 findings** across 6 assessment groups (26 Active Directory + 46 Azure/Entra ID)
+**Total: 80 findings** across 6 assessment groups (26 Active Directory + 54 Azure/Entra ID)
 
 ---
 
@@ -115,7 +115,7 @@ Simulated attacker techniques against Entra ID to identify architectural weaknes
 
 ---
 
-## Group 6 — Non-Human Identity Governance (AZ-041 to AZ-046, 6 findings)
+## Group 6 — Non-Human Identity Governance (AZ-041 to AZ-054, 14 findings)
 
 Workload identity lifecycle governance — service principal ownership, application consent, managed identity proliferation, and privilege hygiene.
 
@@ -127,6 +127,14 @@ Workload identity lifecycle governance — service principal ownership, applicat
 | AZ-044 | Privileged SPs Without Conditional Access | CRITICAL | Service principals holding directory-roles (Global Admin, Application Admin, etc.) with no conditional access scoping — any compromised credential inherits full role privileges without identity controls |
 | AZ-045 | User-Assigned Managed Identity Proliferation | MEDIUM | User-assigned managed identities attached to non-standard resource counts (0 or >1) — indicates identity sprawl or resource attachment drift from intended baseline |
 | AZ-046 | Stale Service Principals | MEDIUM | Service principals not collected in the last 90 days — likely decommissioned but retaining active credentials and role assignments; lateral movement surface if still enabled |
+| AZ-047 | Disabled Service Principals Retaining Privileges | HIGH | Disabled/decommissioned SPs that still hold Entra directory roles — reactivation or cached credentials silently restore privileged access, bypassing standard stale-privilege review |
+| AZ-048 | Single-Owner Service Principals (No Dual Control) | MEDIUM | SPs with exactly one owner — no independent accountability checkpoint for credential, consent, or role changes |
+| AZ-049 | Service Principals With No Active Owner | HIGH | SPs whose only owners are disabled or deleted — appear 'owned' but have no accountable human; role assignments and credentials remain live |
+| AZ-050 | Stale Managed Identities | MEDIUM | User-assigned managed identities idle 90+ days — decommissioned MIs remain assignable and may still carry Azure RBAC |
+| AZ-051 | Stale Registered Devices | MEDIUM | Entra ID-registered devices idle 90+ days — dormant enrollments retain trust state, PRTs, and CA exclusions |
+| AZ-052 | Service Principals With Combined Privileges | CRITICAL | SPs holding BOTH an Entra directory role AND Azure ARM Owner/Contributor/UserAccessAdmin — two privilege planes rarely reviewed together |
+| AZ-053 | Service Principals Owned by Azure Groups | MEDIUM | SPs owned by groups — diffuse accountability with no named individual reviewing credentials or consent |
+| AZ-054 | Legacy / Unknown Service Principal Types | LOW | SPs with 'Legacy' or 'Unknown' service principal type — typically pre-Graph-era, undocumented, and outside modern lifecycle tooling |
 
 ---
 
@@ -139,8 +147,8 @@ Workload identity lifecycle governance — service principal ownership, applicat
 | 3 | Azure/Entra ID Core Assessment | 20 Azure (AZ-001–AZ-020) | CRITICAL–MEDIUM |
 | 4 | Zero Trust Identity Hardening Review | 11 Azure (AZ-021–AZ-031) | HIGH–MEDIUM |
 | 5 | Security Architecture Simulation | 9 Azure (AZ-032–AZ-040) | CRITICAL–MEDIUM |
-| 6 | Non-Human Identity Governance | 6 Azure (AZ-041–AZ-046) | CRITICAL–MEDIUM |
-| **Total** | | **26 AD + 46 Azure = 72** | |
+| 6 | Non-Human Identity Governance | 14 Azure (AZ-041–AZ-054) | CRITICAL–LOW |
+| **Total** | | **26 AD + 54 Azure = 80** | |
 
 Data source: BloodHound CE (Active Directory) + AzureHound (Entra ID) via Neo4j graph database. All findings are evidence-based using actual graph relationships and attack paths, not theoretical configuration checks.
 

@@ -57,7 +57,7 @@ A **schema probe** runs at Neo4j connect time (`collectors/schema_probe.py`) —
 
 ---
 
-## Azure / Entra ID Findings (46)
+## Azure / Entra ID Findings (54)
 
 ### Group: Azure Core (20 findings)
 
@@ -124,12 +124,20 @@ A **schema probe** runs at Neo4j connect time (`collectors/schema_probe.py`) —
 | AZ-044 | Privileged SPs Without Conditional Access | CRITICAL | `AZServicePrincipal` with `AZHasRole` to `AZRoleDefinition` matching directory-role names AND no `CAApplicationCondition` linking to a CA policy. SPs with directory roles bypass conditional access. | `az_sp_privileged_no_ca` |
 | AZ-045 | User-Assigned Managed Identity Proliferation | MEDIUM | `AZServicePrincipal` with `AZManagedIdentity` incoming edge (user-assigned MI). Attachment count != 1 indicates identity sprawl or resource attachment drift. | `az_user_assigned_mi` |
 | AZ-046 | Stale Service Principals | MEDIUM | `AZServicePrincipal` where `TOINTEGER(lastcollected)` < 7776000000 (90 days). Decommissioned SPs retaining active credentials — lateral movement surface. | `az_stale_service_principal` |
+| AZ-047 | Disabled SPs Retaining Privileges | HIGH | `AZServicePrincipal` with `enabled=false` or `appdisabled=true` that still has `AZHasRole` to a directory role. Decommission gap — reactivation restores access. | `az_sp_disabled_privileged` |
+| AZ-048 | Single-Owner Service Principals | MEDIUM | `AZServicePrincipal` (non-MI) with exactly one inbound `AZOwns`. No dual control for credential/consent/role changes. | `az_sp_single_owner` |
+| AZ-049 | SPs With No Active Owner | HIGH | `AZServicePrincipal` (non-MI) with ≥1 owner, all of whom are disabled `AZUser`. Appears owned, but no accountable human exists. | `az_sp_owner_disabled` |
+| AZ-050 | Stale Managed Identities | MEDIUM | `AZServicePrincipal` with `serviceprincipaltype='ManagedIdentity'` and `TOINTEGER(lastcollected)` < 90 days. Dormant MIs remain assignable with RBAC intact. | `az_stale_managed_identity` |
+| AZ-051 | Stale Registered Devices | MEDIUM | `AZDevice` with `lastcollected` set and older than 90 days. Dormant enrollments keep trust state, PRTs, and CA exclusions. Requires `lastcollected` to avoid false positives. | `az_stale_device` |
+| AZ-052 | Combined Directory + ARM Privileges | CRITICAL | `AZServicePrincipal` with BOTH `AZHasRole` → privileged `AZRoleDefinition` AND `AZOwner`/`AZContributor`/`AZUserAccessAdmin` to ARM scope. Two-privilege-plane blast radius. | `az_sp_combined_privileges` |
+| AZ-053 | SPs Owned by Azure Groups | MEDIUM | `(g:AZGroup)-[:AZOwns]->(sp:AZServicePrincipal)`. Diffuse accountability — no named individual reviews the SP. | `az_sp_owner_group` |
+| AZ-054 | Legacy / Unknown SP Types | LOW | `AZServicePrincipal` where `serviceprincipaltype` is `Legacy` or `Unknown`. Pre-Graph-era identities outside modern lifecycle tooling. | `az_sp_legacy_type` |
 
 ---
 
 ## Assessment Groups
 
-All queries are organized into 5 groups (`analytics/groups.py`). Group selection via single-select radio in the sidebar determines which queries execute:
+All queries are organized into 6 groups (`analytics/groups.py`). Group selection via single-select radio in the sidebar determines which queries execute:
 
 | Group | Queries | Findings |
 |---|---|---|
@@ -138,7 +146,7 @@ All queries are organized into 5 groups (`analytics/groups.py`). Group selection
 | Azure Core | 21 | AZ-001 → AZ-020 |
 | Zero Trust Review | 11 | AZ-021 → AZ-031 |
 | Architecture Simulation | 9 | AZ-032 → AZ-040 |
-| NHI Governance | 6 | AZ-041 → AZ-046 |
+| NHI Governance | 14 | AZ-041 → AZ-054 |
 
 **Note**: `az_managed_identity` query (Azure Core group) collects environment data but has no finding mapping — reserved for future use.
 

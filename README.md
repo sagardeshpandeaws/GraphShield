@@ -3,8 +3,8 @@
 GraphShield transforms BloodHound CE telemetry into auditor-ready security
 assessment reports for **Active Directory** and **Microsoft Entra ID (Azure)**.
 
-It connects directly to your BloodHound CE Neo4j database, runs 72
-MITRE ATT&CK-mapped checks (26 AD + 46 Azure), and generates:
+It connects directly to your BloodHound CE Neo4j database, runs 80
+MITRE ATT&CK-mapped checks (26 AD + 54 Azure), and generates:
 
 - Full PDF assessment report with compliance mapping (NIST CSF, CIS, ISO 27001, SA 315, DPDP Act)
 - Excel audit workbook with findings register and remediation tracking
@@ -15,7 +15,7 @@ MITRE ATT&CK-mapped checks (26 AD + 46 Azure), and generates:
 ## Features
 
 - **Direct Neo4j integration** — works with any BloodHound CE version that populates the standard schema; no dependency on the BH web UI
-- **72 automated findings** across Tier-0 exposure, credential attacks, delegation abuse, ACL misuse, certificate services, trust paths, Entra ID privilege roles, and non-human identity governance
+- **80 automated findings** across Tier-0 exposure, credential attacks, delegation abuse, ACL misuse, certificate services, trust paths, Entra ID privilege roles, and non-human identity governance
 - **Hybrid AD + Azure attack chains** — cross-premise escalation scenarios
 - **Weighted risk scoring** with executive dashboard
 - **Source integrity tracking** — SHA-256 of original SharpHound/AzureHound collections embedded in evidence

@@ -321,10 +321,10 @@ def export_ai_pdf(text, filename, findings=None, chains=None, risk=None, env_sta
         ],
         "nhi_governance": [
             ["Week","Focus","Actions"],
-            ["Week 1","Critical","Assign owners to all unowned service principals and app registrations; rotate credentials on over-consented and orphaned apps; remediate privileged SPs with broad Graph permissions"],
-            ["Week 2","High","Enable workload identity Conditional Access for privileged service principals; move permanent privileged SP roles to PIM-eligible; remove unused tenant-wide Graph scopes"],
-            ["Week 3","Medium","Transition user-assigned managed identities to system-assigned (or justify); add owner attestation workflows; enforce credential expiry via app management policies"],
-            ["Week 4","Monitor","Review stale/uncollected service principals for decommissioning; schedule quarterly NHI access reviews; deploy detection for SP credential and consent changes"],
+            ["Week 1","Critical","Assign owners to all unowned service principals and app registrations; rotate credentials on over-consented and orphaned apps; remediate privileged SPs with broad Graph permissions; split combined directory+ARM privileged SPs"],
+            ["Week 2","High","Enable workload identity Conditional Access for privileged service principals; move permanent privileged SP roles to PIM-eligible; remove unused tenant-wide Graph scopes; remove roles from disabled SPs before decommission"],
+            ["Week 3","Medium","Transition user-assigned managed identities to system-assigned (or justify); add dual-owner and owner-attestation workflows; enforce credential expiry via app management policies; review group-owned SP accountability"],
+            ["Week 4","Monitor","Review stale/uncollected SPs, managed identities, and devices for decommissioning; schedule quarterly NHI access reviews; deploy detection for SP credential, consent, and owner changes; document legacy/unknown SP types"],
         ],
     }
 

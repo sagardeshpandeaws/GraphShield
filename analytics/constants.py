@@ -81,6 +81,14 @@ COMPLIANCE_MAP = {
     "AZ_SP_PRIVILEGED_NO_CA": {"CIS": "6.3", "NIST": "PR.AA-03", "ISO 27001": "5.15, 5.16", "SA 315": "IT-1/GITC", "DPDP": "6(1)"},
     "AZ_USER_ASSIGNED_MI": {"CIS": "6.1", "NIST": "PR.AA-02", "ISO 27001": "8.2, 8.3, 8.5", "SA 315": "IT-3/ITDMC", "DPDP": "9(1)"},
     "AZ_STALE_SERVICE_PRINCIPAL": {"CIS": "6.8", "NIST": "PR.AA-03", "ISO 27001": "5.15, 5.16, 8.2", "SA 315": "IT-1/GITC", "DPDP": "6(1)"},
+    "AZ_SP_DISABLED_PRIVILEGED": {"CIS": "6.8", "NIST": "PR.AA-03", "ISO 27001": "5.15, 8.2", "SA 315": "IT-1/GITC", "DPDP": "6(1)"},
+    "AZ_SP_SINGLE_OWNER": {"CIS": "6.1", "NIST": "PR.AA-03", "ISO 27001": "8.2, 8.3", "SA 315": "IT-3/ITDMC", "DPDP": "9(1)"},
+    "AZ_SP_OWNER_DISABLED": {"CIS": "6.1", "NIST": "PR.AA-03", "ISO 27001": "8.2, 8.3, 8.5", "SA 315": "IT-3/ITDMC", "DPDP": "9(1)"},
+    "AZ_STALE_MANAGED_IDENTITY": {"CIS": "6.8", "NIST": "PR.AA-02", "ISO 27001": "5.15, 5.16, 8.2", "SA 315": "IT-1/GITC", "DPDP": "6(1)"},
+    "AZ_STALE_DEVICE": {"CIS": "6.8", "NIST": "PR.AA-01", "ISO 27001": "5.15, 5.16, 8.2", "SA 315": "IT-2/ITAC", "DPDP": "8(1)"},
+    "AZ_SP_COMBINED_PRIVILEGES": {"CIS": "6.1", "NIST": "PR.AA-02", "ISO 27001": "8.2, 8.3, 8.5", "SA 315": "IT-1/GITC", "DPDP": "6(1)"},
+    "AZ_SP_OWNER_GROUP": {"CIS": "6.1", "NIST": "PR.AA-03", "ISO 27001": "8.2, 8.3", "SA 315": "IT-3/ITDMC", "DPDP": "9(1)"},
+    "AZ_SP_LEGACY_TYPE": {"CIS": "6.1", "NIST": "PR.AA-03", "ISO 27001": "8.2, 8.3", "SA 315": "IT-1/GITC", "DPDP": "6(1)"},
 }
 EXCLUSIONS_MAP = {
     "TIER0_PATHS": [
@@ -385,6 +393,46 @@ EXCLUSIONS_MAP = {
     "AZ_STALE_SERVICE_PRINCIPAL": [
         "First-party Microsoft service principals",
         "System-assigned managed identities (lifecycle-bound to a resource)",
+        "SPs with recent sign-in activity in enrichment data",
+    ],
+    "AZ_SP_DISABLED_PRIVILEGED": [
+        "First-party Microsoft service principals",
+        "SPs disabled after role removal completes but before final deprovision",
+        "SPs flagged already by AZ_SP_PRIVILEGED_NO_CA (deduplication)",
+    ],
+    "AZ_SP_SINGLE_OWNER": [
+        "First-party Microsoft service principals (no owner)",
+        "SPs where group ownership exists (covered by AZ_SP_OWNER_GROUP)",
+        "Single-owner SPs in document re-ownership pipeline",
+    ],
+    "AZ_SP_OWNER_DISABLED": [
+        "SPs already flagged by AZ_SP_NO_OWNER (no owners at all)",
+        "First-party Microsoft service principals",
+        "SPs whose owner is a group (groups cannot have disabled state)",
+    ],
+    "AZ_STALE_MANAGED_IDENTITY": [
+        "User-assigned MIs with recent sign-in activity in enrichment data",
+        "MIs lacking the lastcollected property (schema gaps)",
+        "System-assigned managed identities (lifecycle-bound to a resource)",
+    ],
+    "AZ_STALE_DEVICE": [
+        "Devices lacking the lastcollected property (schema gaps)",
+        "First-party Microsoft Entra registered devices (intune-managed)",
+        "Devices with recent sign-in activity in enrichment data",
+    ],
+    "AZ_SP_COMBINED_PRIVILEGES": [
+        "SPs with directory role only (covered by AZ_SP_PRIVILEGED_NO_CA)",
+        "SPs with ARM role only (covered by AZ_OWNER / AZ_CONTRIBUTOR)",
+        "First-party Microsoft service principals",
+    ],
+    "AZ_SP_OWNER_GROUP": [
+        "First-party Microsoft service principals",
+        "Group ownership via well-governed owner groups with documented accountability",
+        "SPs whose group owner is itself unowned (flagged elsewhere)",
+    ],
+    "AZ_SP_LEGACY_TYPE": [
+        "System-assigned managed identities (may carry legacy type in some AzureHound versions)",
+        "First-party Microsoft service principals",
         "SPs with recent sign-in activity in enrichment data",
     ],
 }

@@ -79,6 +79,14 @@ class FindingBuilder:
         ("AZ_SP_PRIVILEGED_NO_CA", "Privileged Service Principal — Outside Conditional Access Scope", "az_sp_privileged_no_ca", "Azure", "nhi_governance"),
         ("AZ_USER_ASSIGNED_MI", "User-Assigned Managed Identities — Portable Workload Credentials", "az_user_assigned_mi", "Azure", "nhi_governance"),
         ("AZ_STALE_SERVICE_PRINCIPAL", "Stale Service Principals — Dormant Identity Governance Gap", "az_stale_service_principal", "Azure", "nhi_governance"),
+        ("AZ_SP_DISABLED_PRIVILEGED", "Disabled Service Principal Retaining Privileges — Decommission Gap", "az_sp_disabled_privileged", "Azure", "nhi_governance"),
+        ("AZ_SP_SINGLE_OWNER", "Single-Owner Service Principal — No Dual Control", "az_sp_single_owner", "Azure", "nhi_governance"),
+        ("AZ_SP_OWNER_DISABLED", "Service Principal With No Active Owner — All Owners Disabled", "az_sp_owner_disabled", "Azure", "nhi_governance"),
+        ("AZ_STALE_MANAGED_IDENTITY", "Stale Managed Identity — Dormant Workload Credential", "az_stale_managed_identity", "Azure", "nhi_governance"),
+        ("AZ_STALE_DEVICE", "Stale Registered Device — Idle Enrollment 90+ Days", "az_stale_device", "Azure", "nhi_governance"),
+        ("AZ_SP_COMBINED_PRIVILEGES", "Service Principal With Combined Directory + Azure Roles", "az_sp_combined_privileges", "Azure", "nhi_governance"),
+        ("AZ_SP_OWNER_GROUP", "Service Principal Owned by Azure Group — Diffuse Accountability", "az_sp_owner_group", "Azure", "nhi_governance"),
+        ("AZ_SP_LEGACY_TYPE", "Legacy / Unknown Service Principal Type — Hygiene Risk", "az_sp_legacy_type", "Azure", "nhi_governance"),
     ]
 
     def build(self, raw, selected_groups=None):

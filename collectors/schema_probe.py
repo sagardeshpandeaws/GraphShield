@@ -23,6 +23,7 @@ GROUP_LABELS = {
     },
     "nhi_governance": {
         "AZServicePrincipal", "AZApplication", "AZRoleDefinition",
+        "AZManagedIdentity", "AZDevice", "AZGroup",
     },
 }
 

@@ -578,6 +578,99 @@ def _process_azure_evidence(category, evidence, buckets, relationship_records):
                 display = f"{principal} (last collected: {last})" if last else principal
                 relationship_records.append({"text": f"{display} - stale service principal", "entities": ent})
 
+    elif category == "AZ_SP_DISABLED_PRIVILEGED":
+        for item in evidence:
+            principal = _clean(item.get("Principal"))
+            role = item.get("Role", "")
+            if principal:
+                buckets["service_principals"].add(principal)
+                ent = _empty_buckets()
+                ent["service_principals"].add(principal)
+                role_str = f" -[{role}]" if role else ""
+                relationship_records.append({"text": f"{principal}{role_str} - disabled SP retaining privilege", "entities": ent})
+
+    elif category == "AZ_SP_SINGLE_OWNER":
+        for item in evidence:
+            principal = _clean(item.get("Principal"))
+            owner = item.get("Owner", "")
+            if principal:
+                buckets["service_principals"].add(principal)
+                ent = _empty_buckets()
+                ent["service_principals"].add(principal)
+                owner_str = f" - single owner: {owner}" if owner else ""
+                relationship_records.append({"text": f"{principal}{owner_str} (no dual control)", "entities": ent})
+
+    elif category == "AZ_SP_OWNER_DISABLED":
+        for item in evidence:
+            principal = _clean(item.get("Principal"))
+            owners = [o for o in (item.get("OwnerAccounts", []) or []) if o]
+            if principal:
+                buckets["service_principals"].add(principal)
+                ent = _empty_buckets()
+                ent["service_principals"].add(principal)
+                owner_str = ", ".join(owners[:5]) if owners else "unknown"
+                if len(owners) > 5:
+                    owner_str += f" (+{len(owners) - 5} more)"
+                relationship_records.append({"text": f"{principal} - no active owner (all disabled/deleted: {owner_str})", "entities": ent})
+
+    elif category == "AZ_STALE_MANAGED_IDENTITY":
+        for item in evidence:
+            identity = _clean(item.get("Identity"))
+            last = item.get("LastCollected", "")
+            if identity:
+                buckets["managed_identities"].add(identity)
+                ent = _empty_buckets()
+                ent["managed_identities"].add(identity)
+                display = f"{identity} (last collected: {last})" if last else identity
+                relationship_records.append({"text": f"{display} - stale managed identity", "entities": ent})
+
+    elif category == "AZ_STALE_DEVICE":
+        for item in evidence:
+            name = _clean(item.get("DeviceName") or item.get("DisplayName"))
+            last = item.get("LastCollected", "")
+            if name:
+                buckets["computers"].add(name)
+                ent = _empty_buckets()
+                ent["computers"].add(name)
+                display = f"{name} (last collected: {last})" if last else name
+                relationship_records.append({"text": f"{display} - stale registered device", "entities": ent})
+
+    elif category == "AZ_SP_COMBINED_PRIVILEGES":
+        for item in evidence:
+            principal = _clean(item.get("Principal"))
+            dir_roles = item.get("DirectoryRoles", []) or []
+            arm_role = item.get("ArmRole", "")
+            scope = item.get("Scope", "")
+            if principal:
+                buckets["service_principals"].add(principal)
+                ent = _empty_buckets()
+                ent["service_principals"].add(principal)
+                roles_str = ", ".join(dir_roles[:4]) if dir_roles else "role"
+                scope_str = f" @ {scope}" if scope else ""
+                relationship_records.append({"text": f"{principal} - [{roles_str}]{scope_str} + {arm_role} (combined privilege)", "entities": ent})
+
+    elif category == "AZ_SP_OWNER_GROUP":
+        for item in evidence:
+            principal = _clean(item.get("Principal"))
+            group = item.get("OwnerGroup", "")
+            if principal:
+                buckets["service_principals"].add(principal)
+                ent = _empty_buckets()
+                ent["service_principals"].add(principal)
+                group_str = f" - owned by group: {group}" if group else ""
+                relationship_records.append({"text": f"{principal}{group_str} (diffuse accountability)", "entities": ent})
+
+    elif category == "AZ_SP_LEGACY_TYPE":
+        for item in evidence:
+            principal = _clean(item.get("Principal"))
+            sp_type = item.get("ServicePrincipalType", "")
+            if principal:
+                buckets["service_principals"].add(principal)
+                ent = _empty_buckets()
+                ent["service_principals"].add(principal)
+                type_str = f" (type: {sp_type})" if sp_type else ""
+                relationship_records.append({"text": f"{principal}{type_str} - legacy/unknown SP type", "entities": ent})
+
 
 def _empty_buckets():
     return {
@@ -2427,6 +2520,203 @@ cleanups because nobody remembers it exists.
             "Entra ID Audit Log: SP authentication for accounts absent from recent collection",
             "Microsoft Graph sign-in logs: principal lastSignInDateTime gap analysis",
             "Microsoft 365 Defender: Orphaned identity alerts",
+        ],
+    },
+    "AZ_SP_DISABLED_PRIVILEGED": {
+        "severity": "HIGH",
+        "mitre": {"id": "T1098.003", "tactic": "Defense Evasion", "technique": "Conditional Access Policies"},
+        "impact": """
+Disabled or decommissioned service principals that still hold
+directory roles or Azure RBAC are a dangling-privilege risk: if a
+credential for a disabled SP is reactivated (or already cached),
+the role grants reactivate with it — often bypassing the normal
+stale-privilege review that active principals receive. Attackers
+who discover such dormant-high-privilege identities get a
+silent persistence path that monitoring systems frequently
+ignore because the account is "disabled."
+""",
+        "remediation": [
+            "Remove directory role and Azure RBAC assignments during SP decommission workflow",
+            "Add disabled-but-privileged SPs to privileged identity monitoring",
+            "Periodically reconcile disabled SPs against active role assignments",
+            "Require reactivation approval (PIM) for any disabled SP being re-enabled",
+            "Decommission retired SPs entirely instead of leaving them disabled",
+        ],
+        "detection": [
+            "Entra ID Audit Log: Re-enable events on privileged service principals",
+            "Entra ID Audit Log: Role assignment changes for disabled principals",
+            "Microsoft 365 Defender: Activities from recently re-enabled workload identities",
+        ],
+    },
+    "AZ_SP_SINGLE_OWNER": {
+        "severity": "MEDIUM",
+        "mitre": {"id": "T1098", "tactic": "Persistence", "technique": "Account Manipulation"},
+        "impact": """
+Workload identities with a single owner carry single-person
+failure and takeover risk: that one owner's departure, compromise,
+or malicious action can silently add credentials, change consent,
+or grant the SP new roles with no independent review. Dual
+ownership is the minimum control expected for privileged and
+long-lived workload identities — without it there is no
+accountability checkpoint standing between the SP and abuse.
+""",
+        "remediation": [
+            "Require at least two owners for every privileged or long-lived service principal",
+            "Re-own single-owner SPs discovered during quarterly governance review",
+            "Prefer group ownership with a documented owner-role membership list",
+            "Enumerate single-owner SPs before onboarding entitlements",
+        ],
+        "detection": [
+            "Entra ID Audit Log: Owner removal events reducing owner count to one",
+            "Entra ID Audit Log: Permission/credential changes by sole owner",
+            "Identity Protection: Single-owner application anomalies",
+        ],
+    },
+    "AZ_SP_OWNER_DISABLED": {
+        "severity": "HIGH",
+        "mitre": {"id": "T1098.002", "tactic": "Persistence", "technique": "Additional Cloud Credentials"},
+        "impact": """
+A service principal whose only owners are disabled or deleted is
+effectively unowned, yet it keeps its role assignments and
+credentials live. Unlike an app with no owner at all, these SPs
+appear 'owned' in reporting until the owner record is examined —
+a blind spot that lets stale high-privilege workloads persist
+through cleanups and be seized by any principal with owner-add
+capability.
+""",
+        "remediation": [
+            "Re-assign an enabled owner to every SP with only disabled owners",
+            "Review and rotate credentials on the SP before re-owning",
+            "Disable or decommission SPs whose business justification lapsed",
+            "Alert on owner-account deletion for service principals in HR offboarding flows",
+            "Include SP owner verification in quarterly NHI access reviews",
+        ],
+        "detection": [
+            "Entra ID Audit Log: Owner account deletion/disable for service principals",
+            "Entra ID Audit Log: Credential additions by non-owner principals",
+            "Identity Protection: Orphaned workload identity anomalies",
+        ],
+    },
+    "AZ_STALE_MANAGED_IDENTITY": {
+        "severity": "MEDIUM",
+        "mitre": {"id": "T1528", "tactic": "Credential Access", "technique": "Steal Application Access Token"},
+        "impact": """
+User-assigned managed identities that have not been collected for
+90+ days are likely decommissioned — yet they remain assignable
+to any resource and may still carry Azure RBAC. Because system
+reports stop listing them when their host resources are removed,
+they become invisible-to-operations backdoors: an attacker who can
+assign identities can bolt a stale MI carrying Owner/Contributor
+roles onto a compute they control and mint tokens under its
+privileges without tripping the usual 'new identity' review.
+""",
+        "remediation": [
+            "Deprovision managed identities not seen in collection for 90+ days",
+            "Verify stale MIs hold no RBAC before deletion",
+            "Review user-assigned MI usage at least quarterly",
+            "Restrict identity-assign permissions to a controlled set of operators",
+            "Enable Entra ID audit on identity assignment transactions",
+        ],
+        "detection": [
+            "Azure activity log: Identity assignment of stale user-assigned MIs",
+            "IMDS/token endpoint call monitoring on compute hosts",
+            "Microsoft 365 Defender: Token-borrowing anomalies from dormant MIs",
+        ],
+    },
+    "AZ_STALE_DEVICE": {
+        "severity": "MEDIUM",
+        "mitre": {"id": "T1098.005", "tactic": "Persistence", "technique": "Device Registration"},
+        "impact": """
+Devices that stopped being collected over 90 days ago are dormant
+enrollments — they keep Entra ID trust state, PRTs, and any
+Conditional Access device exclusion they were granted. A stale
+device that comes back online under attacker control inherits the
+device's prior trust posture, sidestepping the re-enrollment and
+device-compliance checks that would normally gate a new device.
+""",
+        "remediation": [
+            "Purge stale device registrations in Entra ID after 90 days of inactivity",
+            "Disable Conditional Access device exclusions for dormant enrollments",
+            "Track device re-registration as part of enrollment policy",
+            "Review device join types for directory-joined stale devices",
+        ],
+        "detection": [
+            "Entra ID Sign-in logs: Auth from devices previously marked dormant",
+            "Entra ID Device activity: Post-dormancy authentication bursts",
+            "Microsoft 365 Defender: Device trust anomalies",
+        ],
+    },
+    "AZ_SP_COMBINED_PRIVILEGES": {
+        "severity": "CRITICAL",
+        "mitre": {"id": "T1098.001", "tactic": "Persistence", "technique": "Additional Cloud Credentials"},
+        "impact": """
+A service principal that simultaneously holds an Entra directory
+role and an Azure ARM Owner/Contributor/UserAccessAdmin role is a
+compound-privilege identity: compromise of a single SP credential
+chains Graph API directory manipulation with ARM resource control
+(role assignment, VM/Key Vault access). The two privilege planes
+are usually reviewed by different teams, so the combined blast
+radius is rarely visible — making it a high-value takeover target.
+""",
+        "remediation": [
+            "Split the SP's directory-level and ARM-level roles across separate identities",
+            "Move directory roles to PIM-eligible (just-in-time activation)",
+            "Scope ARM role assignments to the minimum resource hierarchy",
+            "Centralize review of SPs holding roles in both planes",
+            "Rotate credentials and reassess consent on any such SP",
+        ],
+        "detection": [
+            "Entra ID Audit Log + Azure activity log: role adds across both planes",
+            "Microsoft Graph sign-in logs: token issuance for compound-privilege SPs",
+            "Microsoft 365 Defender: Workload identity with cross-plane privilege alerts",
+        ],
+    },
+    "AZ_SP_OWNER_GROUP": {
+        "severity": "MEDIUM",
+        "mitre": {"id": "T1098", "tactic": "Persistence", "technique": "Account Manipulation"},
+        "impact": """
+Duplicating ownership to Azure groups dilutes individual
+accountability: no named owner reviews the SP's credentials or
+consent, and anyone who can later join the group (or compromise a
+member) inherits the SP's full management surface. Without an
+attestation requirement on the group's membership, group-owned SPs
+drift out of review and become a shared-credential risk across
+many principals.
+""",
+        "remediation": [
+            "Replace group-owned SPs with named owners or a documented owner-role list",
+            "Attest owner group membership quarterly and enforce JIT membership",
+            "Require an accountable individual for each group-owned workload identity",
+            "Alert when the owning group's membership changes",
+        ],
+        "detection": [
+            "Entra ID Audit Log: Owner-group membership additions",
+            "Entra ID Audit Log: Credential changes on group-owned SPs",
+            "Identity Protection: Group-membership-driven SP privilege changes",
+        ],
+    },
+    "AZ_SP_LEGACY_TYPE": {
+        "severity": "LOW",
+        "mitre": {"id": "T1078.004", "tactic": "Persistence", "technique": "Cloud Roles"},
+        "impact": """
+Legacy or unknown service principal types (e.g., 'Legacy',
+'Unknown') commonly correspond to pre-Graph-era applications
+provisioned via old consent flows or non-standard provisioning
+paths. They tend to bypass newer lifecycle tooling, retain static
+secrets, and fall outside modern app-governance templates — a
+moderate hygiene risk that usually signals an undocumented,
+possibly deprovisioned-by-a-different-mechanism identity.
+""",
+        "remediation": [
+            "Inventory all legacy/unknown SPs and map them to owning teams",
+            "Migrate or decommission legacy SPs in favor of modern app registrations",
+            "Document accepted legacy SPs with explicit risk acceptance",
+            "Extend credential-expiry and attestation policies to legacy SPs",
+        ],
+        "detection": [
+            "Entra ID Audit Log: Authentication from legacy-type service principals",
+            "Microsoft Graph: App registration type anomalies",
+            "Microsoft 365 Defender: Legacy workload identity activity",
         ],
     },
 }

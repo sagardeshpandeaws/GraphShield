@@ -436,4 +436,97 @@ AZURE_QUERIES = {
                sp.lastcollected AS LastCollected, LABELS(sp) AS PrincipalType
         LIMIT 15000
     """,
+
+    # Disabled / decommissioned service principals retaining directory roles
+    "az_sp_disabled_privileged": """
+        MATCH (sp:AZServicePrincipal)-[:AZHasRole]->(r:AZRoleDefinition)
+        WHERE COALESCE(sp.enabled, true) = false
+           OR COALESCE(sp.appdisabled, false) = true
+        RETURN sp.name AS Principal, sp.objectid AS ObjectId, sp.appid AS AppId,
+               r.displayname AS Role, sp.enabled AS Enabled,
+               LABELS(sp) AS PrincipalType
+        LIMIT 15000
+    """,
+
+    # Service principals with exactly one owner — no dual control
+    "az_sp_single_owner": """
+        MATCH (sp:AZServicePrincipal)
+        WHERE COALESCE(sp.serviceprincipaltype, '') <> 'ManagedIdentity'
+        WITH sp, collect(DISTINCT [(o)-[:AZOwns]->(sp) | o.name]) AS Owners
+        WHERE SIZE(Owners) = 1
+        RETURN sp.name AS Principal, sp.objectid AS ObjectId, sp.appid AS AppId,
+               Owners[0][0] AS Owner, LABELS(sp) AS PrincipalType
+        LIMIT 15000
+    """,
+
+    # Service principals whose owners are all disabled or deleted
+    "az_sp_owner_disabled": """
+        MATCH (sp:AZServicePrincipal)
+        WHERE COALESCE(sp.serviceprincipaltype, '') <> 'ManagedIdentity'
+        OPTIONAL MATCH (o)-[:AZOwns]->(sp)
+        WITH sp, collect(DISTINCT o) AS Owners
+        WHERE SIZE([o IN Owners WHERE o IS NOT NULL]) > 0
+          AND SIZE([o IN Owners WHERE o IS NOT NULL
+                AND NOT (o:AZUser AND COALESCE(o.enabled, true) = false)]) = 0
+        RETURN sp.name AS Principal, sp.objectid AS ObjectId, sp.appid AS AppId,
+               [o IN Owners WHERE o IS NOT NULL | o.name] AS OwnerAccounts,
+               LABELS(sp) AS PrincipalType
+        LIMIT 15000
+    """,
+
+    # Stale user-assigned managed identities — idle 90+ days
+    "az_stale_managed_identity": """
+        MATCH (sp:AZServicePrincipal)
+        WHERE COALESCE(sp.serviceprincipaltype, '') = 'ManagedIdentity'
+          AND sp.lastcollected IS NOT NULL
+          AND TOINTEGER(sp.lastcollected) < (timestamp() - 7776000000)
+        RETURN sp.name AS Identity, sp.objectid AS ObjectId, sp.appid AS AppId,
+               sp.lastcollected AS LastCollected, LABELS(sp) AS PrincipalType
+        LIMIT 15000
+    """,
+
+    # Stale registered devices — enrollment idle 90+ days
+    "az_stale_device": """
+        MATCH (d:AZDevice)
+        WHERE d.lastcollected IS NOT NULL
+          AND TOINTEGER(d.lastcollected) < (timestamp() - 7776000000)
+        RETURN d.name AS DeviceName, d.displayname AS DisplayName,
+               d.trusttype AS TrustType, d.operationalstatus AS OperationalStatus,
+               d.lastcollected AS LastCollected
+        LIMIT 15000
+    """,
+
+    # Service principals holding BOTH Entra directory role AND Azure ARM privilege
+    "az_sp_combined_privileges": """
+        MATCH (sp:AZServicePrincipal)-[:AZHasRole]->(r:AZRoleDefinition)
+        WHERE r.displayname IN ['Global Administrator', 'Privileged Role Administrator',
+               'Application Administrator', 'Cloud Application Administrator',
+               'Hybrid Identity Administrator', 'User Access Administrator',
+               'Security Administrator', 'Conditional Access Administrator']
+        WITH sp, collect(DISTINCT r.displayname) AS DirectoryRoles
+        MATCH (sp)-[arm]->(scope)
+        WHERE arm:AZOwner OR arm:AZContributor OR arm:AZUserAccessAdmin
+        RETURN sp.name AS Principal, sp.appid AS AppId,
+               DirectoryRoles AS DirectoryRoles, type(arm) AS ArmRole,
+               scope.name AS Scope, LABELS(scope) AS ScopeType
+        LIMIT 15000
+    """,
+
+    # Service principals owned by Azure groups — diffuse accountability
+    "az_sp_owner_group": """
+        MATCH (g:AZGroup)-[:AZOwns]->(sp:AZServicePrincipal)
+        RETURN sp.name AS Principal, sp.objectid AS ObjectId, sp.appid AS AppId,
+               g.name AS OwnerGroup, LABELS(sp) AS PrincipalType
+        LIMIT 15000
+    """,
+
+    # Service principals with legacy or unknown service principal types
+    "az_sp_legacy_type": """
+        MATCH (sp:AZServicePrincipal)
+        WHERE COALESCE(sp.serviceprincipaltype, '') IN ['Legacy', 'Unknown']
+        RETURN sp.name AS Principal, sp.objectid AS ObjectId, sp.appid AS AppId,
+               sp.serviceprincipaltype AS ServicePrincipalType,
+               LABELS(sp) AS PrincipalType
+        LIMIT 15000
+    """,
 }

@@ -21,7 +21,7 @@ Open browser to `http://localhost:8501`
 The GraphShield – Hybrid Identity Security Assessment Platform is a Streamlit-based web application that:
 
 1. **Connects to Neo4j** (populated by BloodHound CE) to retrieve AD AND Azure/Entra ID attack path data
-2. **Analyses findings** across **72 categories** — 26 Active Directory + 46 Azure/Entra ID
+2. **Analyses findings** across **80 categories** — 26 Active Directory + 54 Azure/Entra ID
 3. **Generates professional reports** (PDF, Excel, CSV, JSON) with client branding
 4. **Produces AI-powered executive summaries** via local Ollama LLM
 
@@ -96,7 +96,7 @@ In the sidebar, choose one assessment scope via the radio buttons:
 | **Azure/Entra ID Core Assessment** | 20 Azure findings — privileged roles, app permissions, key vault abuse, external users, etc. |
 | **Zero Trust Identity Hardening Review** | 11 Azure findings — MFA gaps, CA policy gaps, PIM audit, legacy auth, logging, etc. |
 | **Security Architecture Simulation** | 9 Azure findings — Graph API abuse, PRT token abuse, device join abuse, MI token theft, etc. |
-| **Non-Human Identity Governance** | 6 Azure findings — unowned SPs, orphaned apps, over-consented apps, privileged SPs without CA, user-assigned MI proliferation, stale SPs |
+| **Non-Human Identity Governance** | 14 Azure findings — unowned/disabled-owner/single-owner SPs, over-consented apps, privileged SPs without CA, MI & device lifecycle, combined-privilege SPs, legacy SP types |
 
 Only the selected scope will be queried from Neo4j and appear in reports.
 
@@ -119,7 +119,7 @@ The main dashboard shows:
 - **Risk Gauge**: Overall risk score 0–100 (aligned with RiskEngine calculation)
 - **Finding Cards** (only groups you selected):
   - **26 AD finding types** (AD-001 through AD-026) from BloodHound data
-  - **46 Azure/Entra ID finding types** (AZ-001 through AZ-046) from AzureHound data
+  - **54 Azure/Entra ID finding types** (AZ-001 through AZ-054) from AzureHound data
   - Findings WITH evidence show full data (identified assets, relationships, severity)
   - Findings WITHOUT evidence show `[NO DATA]` — the framework is still visible for audit scope
 - Each finding has tabs:
@@ -198,7 +198,7 @@ GraphShield/
 │   └── requirements.txt            ── Python dependencies
 ├── analytics/
 │   ├── constants.py                 ── Shared compliance map, severity weights, colors
-│   ├── finding_builder.py          ── 72 finding definitions (26 AD + 46 Azure)
+│   ├── finding_builder.py          ── 80 finding definitions (26 AD + 54 Azure)
 │   ├── finding_enrichment.py       ── Severity/impact/remediation/compliance enrichment
 │   ├── groups.py                   ── 5 assessment group definitions and query key map
 │   ├── risk_engine.py              ── Weighted risk scoring (AD + Cloud split)
@@ -210,7 +210,7 @@ GraphShield/
 ├── collectors/
 │   ├── neo4j_collector.py          ── Neo4j/BloodHound data fetcher (AD + Azure queries)
 │   ├── bloodhound_queries.py       ── 26 Cypher queries (AD findings)
-│   ├── azure_queries.py            ── 47 Cypher queries (46 Azure/Entra ID findings + 1 supporting query)
+│   ├── azure_queries.py            ── 55 Cypher queries (54 Azure/Entra ID findings + 1 supporting query)
 │   ├── query_registry.py           ── Built-in query registry
 │   └── schema_probe.py             ── Per-group schema validation at connect time
 ├── reporting/

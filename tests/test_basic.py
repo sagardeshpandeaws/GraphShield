@@ -36,6 +36,9 @@ AZ_IDS = [
     "AZ_PAG_ESCALATION",
     "AZ_SP_NO_OWNER", "AZ_ORPHANED_APP", "AZ_OVERCONSENTED_APP",
     "AZ_SP_PRIVILEGED_NO_CA", "AZ_USER_ASSIGNED_MI", "AZ_STALE_SERVICE_PRINCIPAL",
+    "AZ_SP_DISABLED_PRIVILEGED", "AZ_SP_SINGLE_OWNER", "AZ_SP_OWNER_DISABLED",
+    "AZ_STALE_MANAGED_IDENTITY", "AZ_STALE_DEVICE", "AZ_SP_COMBINED_PRIVILEGES",
+    "AZ_SP_OWNER_GROUP", "AZ_SP_LEGACY_TYPE",
 ]
 
 ALL_IDS = AD_IDS + AZ_IDS
@@ -43,7 +46,7 @@ ALL_IDS = AD_IDS + AZ_IDS
 
 class TestFindingCounts:
     def test_total_findings(self):
-        assert len(FindingBuilder.FINDINGS) == 72
+        assert len(FindingBuilder.FINDINGS) == 80
 
     def test_ad_findings(self):
         ad = [f for f in FindingBuilder.FINDINGS if f[3] == "Active Directory"]
@@ -51,7 +54,7 @@ class TestFindingCounts:
 
     def test_azure_findings(self):
         az = [f for f in FindingBuilder.FINDINGS if f[3] == "Azure"]
-        assert len(az) == 46
+        assert len(az) == 54
 
     def test_all_ids_present(self):
         ids = {f[0] for f in FindingBuilder.FINDINGS}
@@ -81,7 +84,7 @@ class TestFindingBuilder:
     def test_build_returns_correct_count(self):
         builder = FindingBuilder()
         result = builder.build({})
-        assert len(result) == 72
+        assert len(result) == 80
 
     def test_build_has_required_keys(self):
         builder = FindingBuilder()
