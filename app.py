@@ -226,7 +226,7 @@ if using_cache:
 else:
     # Fresh mode — require file upload
     st.sidebar.markdown("**Data Source Integrity**")
-    st.sidebar.caption("Upload original ZIPs to capture SHA-256 + collection method in the report")
+    st.sidebar.caption("Upload original OG Files to capture SHA-256 + collection method in the report")
 
     from config import process_sharphound_zip, process_azurehound_zip
 
@@ -236,8 +236,7 @@ else:
                                       help="Original AzureHound output file (computes SHA-256)")
     lf_feed = st.sidebar.file_uploader("NHI Lifecycle Feed (JSON)", type=["json"],
                                        help="Optional Entra NHI sign-in/audit-log feed JSON. "
-                                            "Persisted like reloaded Neo4j data (SHA-256 + cache); "
-                                            "no feed → no lifecycle findings, 80-finding baseline kept")
+                                            "no feed → no lifecycle findings")
 
     # When version changed to a cacheless version, ignore stale uploads
     # (file_uploaders persist across reruns within the same browser session)
