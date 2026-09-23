@@ -157,6 +157,65 @@ def _client_dir(client_name):
     return os.path.join(BASE_OUTPUT_DIR, safe)
 
 
+def save_lifecycle_feed_cache(client_name, data_version, feed_data, metadata=None):
+    """Persist an uploaded Entra NHI lifecycle feed exactly like reloaded
+    Neo4j data: versioned JSON in the client dir plus a SHA-256/method/
+    timestamp integrity block that is rehydrated on the next run.
+
+    feed_data is the JSON-serializable lifecycle feed (dict/list). metadata
+    may carry nhil_sha256 / nhil_method / nhil_timestamp. Returns bool.
+    """
+    log = logging.getLogger(__name__)
+    cdir = _client_dir(client_name)
+    os.makedirs(cdir, exist_ok=True)
+    feed_path = os.path.join(cdir, "nhi_lifecycle_feed.json")
+    try:
+        existing = {}
+        if os.path.exists(feed_path):
+            with open(feed_path, encoding="utf-8") as f:
+                existing = json.load(f)
+        existing_integrity = existing.get("_source_integrity") if isinstance(existing, dict) else None
+    except Exception:
+        existing_integrity = None
+
+    payload = feed_data if isinstance(feed_data, dict) else {"value": feed_data}
+    if isinstance(payload, dict):
+        payload["_data_version"] = data_version
+        payload["_client"] = client_name
+        payload["_saved_at"] = datetime.utcnow().isoformat()
+        if existing_integrity:
+            payload["_source_integrity"] = existing_integrity
+        if metadata:
+            payload["_source_integrity"] = {
+                "nhil_sha256": metadata.get("nhil_sha256"),
+                "nhil_method": metadata.get("nhil_method"),
+                "nhil_timestamp": metadata.get("nhil_timestamp"),
+                "nhil_name": metadata.get("nhil_name"),
+            }
+    with open(feed_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, default=str)
+    log.info("Lifecycle feed cache saved client=%s version=%s path=%s",
+             client_name, data_version, os.path.basename(feed_path))
+    return True
+
+
+def load_lifecycle_feed_cache(client_name):
+    """Load the persisted NHI lifecycle feed for a client (mirrors
+    load_raw_cache). Returns dict/list or None. Never raises."""
+    log = logging.getLogger(__name__)
+    feed_path = os.path.join(_client_dir(client_name), "nhi_lifecycle_feed.json")
+    if not os.path.exists(feed_path):
+        return None
+    try:
+        with open(feed_path, encoding="utf-8") as f:
+            data = json.load(f)
+        log.debug("Lifecycle feed cache loaded client=%s", client_name)
+        return data.get("value", data) if isinstance(data, dict) else data
+    except Exception as e:
+        log.warning("Failed to load lifecycle feed cache %s: %s", feed_path, e)
+        return None
+
+
 def _version_dir(client_name, data_version):
     """Version-specific output directory: outputs/<Client>/v<version>/"""
     return os.path.join(_client_dir(client_name), f"v{data_version}")
