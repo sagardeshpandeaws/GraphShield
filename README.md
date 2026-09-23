@@ -16,6 +16,7 @@ MITRE ATT&CK-mapped checks (26 AD + 54 Azure), and generates:
 
 - **Direct Neo4j integration** — works with any BloodHound CE version that populates the standard schema; no dependency on the BH web UI
 - **80 automated findings** across Tier-0 exposure, credential attacks, delegation abuse, ACL misuse, certificate services, trust paths, Entra ID privilege roles, and non-human identity governance
+- **Optional NHI lifecycle feed** — set `GRAPH_SHIELD_LIFECYCLE_FEED` (Entra sign-in / audit-log JSON path, glob, or dict) to append feed-gated non-human-identity **lifecycle governance findings** (orphaned/dormant/credential-expired/consent/privilege anomalies). No feed → deterministic no-op; the 80-finding baseline is untouched.
 - **Hybrid AD + Azure attack chains** — cross-premise escalation scenarios
 - **Weighted risk scoring** with executive dashboard
 - **Source integrity tracking** — SHA-256 of original SharpHound/AzureHound collections embedded in evidence

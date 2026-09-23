@@ -147,8 +147,25 @@ All queries are organized into 6 groups (`analytics/groups.py`). Group selection
 | Zero Trust Review | 11 | AZ-021 → AZ-031 |
 | Architecture Simulation | 9 | AZ-032 → AZ-040 |
 | NHI Governance | 14 | AZ-041 → AZ-054 |
+| NHI Lifecycle *(feed-gated)* | 5* | AZ-055 → AZ-059 |
+
+\* `nhi_lifecycle` group is **feed-gated**: its `load_lifecycle_feed` → `feed_summary` → `build_lifecycle_findings` pipeline runs only when an Entra lifecycle feed (JSON path / glob / in-memory dict, env `GRAPH_SHIELD_LIFECYCLE_FEED`) is supplied. Without a feed it deterministically no-ops and **the 80-finding table above is unchanged**; with a feed it adds the 5 lifecycle NHI findings (AZ-055 → AZ-059), each carrying an `OWASP NHI` compliance mapping.
 
 **Note**: `az_managed_identity` query (Azure Core group) collects environment data but has no finding mapping — reserved for future use.
+
+### NHI Lifecycle Feed (NHI Governance, feed-gated)
+
+Apart from the 14 NHI Governance findings above (AZ-041–AZ-054, baseline, always run), GraphShield supports an **optional lifecycle evidence feed** for Entra sign-in and audit-log data. When present (env `GRAPH_SHIELD_LIFECYCLE_FEED` pointing to a JSON path, glob, or in-memory dict), the lifecycle adapter appends 5 NHI lifecycle governance findings:
+
+| ID | Finding | Sev | What We Check & Why | Feed Token |
+|---|---|---|---|---|
+| AZ-055 | Active Yet Orphaned Workload Identity | HIGH | Service principal / managed identity actively signing in but with no accountable owner — impersonable with no ownership chain for rotation or CA. | `orphan` |
+| AZ-056 | Dormant High-Privilege Identity Reactivation | HIGH | Privileged SP that has been dormant and is being reactivated — dormant take-over / reuse surface. | `dormant` |
+| AZ-057 | Credential-Expired Identity Still Alive | HIGH | Client-secret/credential-expired SP still authenticating — breach of credential lifecycle policy. | `credential expired` |
+| AZ-058 | Sign-In Anomaly (NHI) | MEDIUM | Anomalous NHI sign-in (impossible-travel / unusual client) after account review — unflagged NHI compromise indicator. | `sign-in anomaly` |
+| AZ-059 | Consent Granted After Review | LOW | Consent granted post-review (consent/approval after attestation) — NHI permission drift. | `consent after review` |
+
+Each lifecycle finding is pre-enriched, carries an `OWASP NHI` compliance mapping, references its source Entra evidence events, and is exported into the same AI-PDF / PDF / Excel / CSV artifacts. **Feed absent → these findings are not emitted**; the 80-finding baseline and all exporters are byte-identical.**Specific findings added:** The lifecycle feed (if supplied) adds the five NHI lifecycle findings listed above (AZ-055 – AZ-059); without a feed, the total stays at **80** exactly.
 
 ---
 

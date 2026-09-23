@@ -478,6 +478,25 @@ if st.session_state.findings is None or reload_btn or version_changed:
     findings = [enrich_finding(f, raw) for f in findings]
     findings = IdentityNormalizer().normalize(findings)
 
+    # ─── NHI lifecycle feed (phase NHI-2, deterministic no-op) ────
+    # Optional ENTRA_DIR sign-in/audit feed (env GRAPH_SHIELD_LIFECYCLE_FEED
+    # → path/glob/JSON). When absent → load_lifecycle_feed returns {} →
+    # build_lifecycle_findings returns [] → the 80-finding baseline, the
+    # 154-test deterministic suite, and all exporters are untouched.
+    # When present → appends the feed-gated NHI lifecycle findings
+    # (pre-enriched, exporter-ready) to the normalized set.
+    lifecycle_feed = os.environ.get("GRAPH_SHIELD_LIFECYCLE_FEED", "").strip()
+    if lifecycle_feed:
+        try:
+            from analytics.nhi_lifecycle import (
+                load_lifecycle_feed, build_lifecycle_findings,
+            )
+            lifecycle_evidence = load_lifecycle_feed(lifecycle_feed)
+            if lifecycle_evidence:
+                findings = findings + build_lifecycle_findings(lifecycle_evidence)
+        except Exception:
+            pass  # deterministic no-op on any feed/adapter failure
+
     for f in findings:
         f["ad_objects"] = f.get("ad_objects", {
             "users": [], "groups": [], "computers": [],

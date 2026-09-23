@@ -136,6 +136,18 @@ Workload identity lifecycle governance — service principal ownership, applicat
 | AZ-053 | Service Principals Owned by Azure Groups | MEDIUM | SPs owned by groups — diffuse accountability with no named individual reviewing credentials or consent |
 | AZ-054 | Legacy / Unknown Service Principal Types | LOW | SPs with 'Legacy' or 'Unknown' service principal type — typically pre-Graph-era, undocumented, and outside modern lifecycle tooling |
 
+#### Optional NHI Lifecycle Findings (feed-gated — AZ-055 → AZ-059)
+
+The five lifecycle findings below are **emitted only when an Entra lifecycle feed is supplied** (`GRAPH_SHIELD_LIFECYCLE_FEED` env → JSON path / glob / in-memory dict). Without a feed they do **not** run, so the 80-finding baseline is unchanged. Each carries an `OWASP NHI` compliance mapping and Entra sign-in/audit evidence.
+
+| AZ ID | Finding | Severity | Rationale / Source Evidence |
+|--------|---------|----------|----------------------------|
+| AZ-055 | Active Orphaned Workload Identity | HIGH | Workload identity actively signing in with no accountable owner — no rotation/CA/lifecycle control; NHI lifecycle-feed signal `orphan`. |
+| AZ-056 | Dormant High-Privilege Identity Reactivation | HIGH | Privileged NHI that went dormant then reactivated — dormant account takeover surface; signal `dormant`. |
+| AZ-057 | Credential-Expired Identity Still Alive | HIGH | Client-secret/credential-expired NHI still authenticating — credential lifecycle breach; signal `credential expired`. |
+| AZ-058 | Sign-In Anomaly (NHI) | MEDIUM | Anomalous/nonstandard workload sign-in (impossible travel, unfamiliar client) — NHI compromise indicator; signal `sign-in anomaly`. |
+| AZ-059 | Consent Granted After Review | LOW | Consent/permission granted following post-review activity — drift after attestation; signal `consent after review`. |
+
 ---
 
 ## Summary
@@ -148,7 +160,9 @@ Workload identity lifecycle governance — service principal ownership, applicat
 | 4 | Zero Trust Identity Hardening Review | 11 Azure (AZ-021–AZ-031) | HIGH–MEDIUM |
 | 5 | Security Architecture Simulation | 9 Azure (AZ-032–AZ-040) | CRITICAL–MEDIUM |
 | 6 | Non-Human Identity Governance | 14 Azure (AZ-041–AZ-054) | CRITICAL–LOW |
-| **Total** | | **26 AD + 54 Azure = 80** | |
+| **Total (baseline)** | | **26 AD + 54 Azure = 80** | |
+
+A lifecycle feed (AZ-055 → AZ-059, above) is **optional and gated** — when supplied the total reaches **85**, otherwise the 80-finding baseline is unchanged. The findings tables in scope are version-stamped (ADR-021 | Findings | 80 baseline findings: 26 AD + 54 Azure (feed-gated lifecycle adds AZ-055 → AZ-059) |).
 
 Data source: BloodHound CE (Active Directory) + AzureHound (Entra ID) via Neo4j graph database. All findings are evidence-based using actual graph relationships and attack paths, not theoretical configuration checks.
 
