@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import os
 import glob
+import hashlib
 import plotly.graph_objects as go
 import streamlit.components.v1 as components
 from datetime import datetime
@@ -233,6 +234,10 @@ else:
                                       help="Original SharpHound output ZIP or extracted metadata JSON")
     ah_zip = st.sidebar.file_uploader("AzureHound ZIP/JSON", type=["zip", "json"],
                                       help="Original AzureHound output file (computes SHA-256)")
+    lf_feed = st.sidebar.file_uploader("NHI Lifecycle Feed (JSON)", type=["json"],
+                                       help="Optional Entra NHI sign-in/audit-log feed JSON. "
+                                            "Persisted like reloaded Neo4j data (SHA-256 + cache); "
+                                            "no feed → no lifecycle findings, 80-finding baseline kept")
 
     # When version changed to a cacheless version, ignore stale uploads
     # (file_uploaders persist across reruns within the same browser session)
@@ -283,6 +288,42 @@ else:
             if ah_ts:
                 parts.append(f"collected: {ah_ts[:10]}")
             st.sidebar.success("AzureHound: " + " | ".join(parts))
+
+        # NHI lifecycle feed — persist like reloaded Neo4j data (SHA-256 +
+        # method + timestamp in the client/version cache, restored on rerun).
+        # No upload -> lifecycle_feed stays unset -> deterministic no-op.
+        if lf_feed is not None:
+            lf_bytes = lf_feed.getvalue()
+            try:
+                lf_evidence_raw = json.loads(lf_bytes.decode("utf-8"))
+            except Exception:
+                lf_evidence_raw = None
+                st.sidebar.error("Lifecycle feed: not valid JSON")
+            if lf_evidence_raw is not None:
+                from analytics.nhi_lifecycle import load_lifecycle_feed
+                from config import save_lifecycle_feed_cache
+                lf_sha256 = hashlib.sha256(lf_bytes).hexdigest()
+                lf_ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                lf_evidence = load_lifecycle_feed(lf_evidence_raw)
+                save_lifecycle_feed_cache(
+                    client_config["client_name"], client_config["data_version"],
+                    lf_evidence,
+                    metadata={
+                        "nhil_sha256": lf_sha256,
+                        "nhil_method": lf_feed.name,
+                        "nhil_timestamp": lf_ts,
+                    },
+                )
+                st.session_state.file_metadata["nhil_sha256"] = lf_sha256
+                st.session_state.file_metadata["nhil_method"] = lf_feed.name
+                st.session_state.file_metadata["nhil_timestamp"] = lf_ts
+                client_config["nhil_sha256"] = lf_sha256
+                client_config["nhil_collection_method"] = lf_feed.name
+                client_config["nhil_timestamp"] = lf_ts
+                st.sidebar.success("Lifecycle feed: " + " | ".join([
+                    f"SHA-256: {lf_sha256[:12]}...",
+                    f"method: {lf_feed.name[:20]}",
+                ]))
 
         # Persist file metadata to disk per version
         from config import save_source_integrity
@@ -485,7 +526,20 @@ if st.session_state.findings is None or reload_btn or version_changed:
     # 154-test deterministic suite, and all exporters are untouched.
     # When present → appends the feed-gated NHI lifecycle findings
     # (pre-enriched, exporter-ready) to the normalized set.
+    # NHI lifecycle block: env env var → path/glob/JSON. Deterministic no-op:
+    # GRAPH_SHIELD_LIFECYCLE_FEED absent (or empty/bad) → load_lifecycle_feed
+    # returns {} → build_lifecycle_findings([]) → [] → the 80-finding
+    # baseline is untouched. When present → appends the feed-gated NHI
+    # lifecycle governance findings (NHI-2, exporter-ready).
     lifecycle_feed = os.environ.get("GRAPH_SHIELD_LIFECYCLE_FEED", "").strip()
+    if not lifecycle_feed:
+        # Rerun restore: rehydrate the feed from the per-client cache
+        # (persisted by save_lifecycle_feed_cache) — mirrors how reloaded
+        # Neo4j data is restored on a cached rerun.
+        from config import load_lifecycle_feed_cache as _lf_restore
+        _feed = _lf_restore(client_config["client_name"])
+        if _feed:
+            lifecycle_feed = ("__nhi_cache__", _feed)
     if lifecycle_feed:
         try:
             from analytics.nhi_lifecycle import (
