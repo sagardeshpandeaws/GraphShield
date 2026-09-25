@@ -147,15 +147,15 @@ All queries are organized into 6 groups (`analytics/groups.py`). Group selection
 | Zero Trust Review | 11 | AZ-021 → AZ-031 |
 | Architecture Simulation | 9 | AZ-032 → AZ-040 |
 | NHI Governance | 14 | AZ-041 → AZ-054 |
-| NHI Lifecycle *(feed-gated)* | 5* | AZ-055 → AZ-059 |
+| NHI Lifecycle *(feed-gated)* | 8* | AZ-055 → AZ-062 |
 
-\* `nhi_lifecycle` group is **feed-gated**: its `load_lifecycle_feed` → `feed_summary` → `build_lifecycle_findings` pipeline runs only when an Entra lifecycle feed (JSON path / glob / in-memory dict, env `GRAPH_SHIELD_LIFECYCLE_FEED`) is supplied. Without a feed it deterministically no-ops and **the 80-finding table above is unchanged**; with a feed it adds the 5 lifecycle NHI findings (AZ-055 → AZ-059), each carrying an `OWASP NHI` compliance mapping.
+\* `nhi_lifecycle` group is **feed-gated**: its `load_lifecycle_feed` → `feed_summary` → `build_lifecycle_findings` pipeline runs only when an Entra lifecycle feed (JSON path / glob / in-memory dict, env `GRAPH_SHIELD_LIFECYCLE_FEED`) is supplied. Without a feed it deterministically no-ops and **the 80-finding table above is unchanged**; with a feed it adds the 8 lifecycle NHI findings (AZ-055 → AZ-062), each carrying an `OWASP NHI` compliance mapping.
 
 **Note**: `az_managed_identity` query (Azure Core group) collects environment data but has no finding mapping — reserved for future use.
 
 ### NHI Lifecycle Feed (NHI Governance, feed-gated)
 
-Apart from the 14 NHI Governance findings above (AZ-041–AZ-054, baseline, always run), GraphShield supports an **optional lifecycle evidence feed** for Entra sign-in and audit-log data. When present (env `GRAPH_SHIELD_LIFECYCLE_FEED` pointing to a JSON path, glob, or in-memory dict), the lifecycle adapter appends 5 NHI lifecycle governance findings:
+Apart from the 14 NHI Governance findings above (AZ-041–AZ-054, baseline, always run), GraphShield supports an **optional lifecycle evidence feed** for Entra sign-in and audit-log data. When present (env `GRAPH_SHIELD_LIFECYCLE_FEED` pointing to a JSON path, glob, or in-memory dict), the lifecycle adapter appends 8 NHI lifecycle governance findings:
 
 | ID | Finding | Sev | What We Check & Why | Feed Token |
 |---|---|---|---|---|
@@ -164,8 +164,11 @@ Apart from the 14 NHI Governance findings above (AZ-041–AZ-054, baseline, alwa
 | AZ-057 | Credential-Expired Identity Still Alive | HIGH | Client-secret/credential-expired SP still authenticating — breach of credential lifecycle policy. | `credential expired` |
 | AZ-058 | Sign-In Anomaly (NHI) | MEDIUM | Anomalous NHI sign-in (impossible-travel / unusual client) after account review — unflagged NHI compromise indicator. | `sign-in anomaly` |
 | AZ-059 | Consent Granted After Review | LOW | Consent granted post-review (consent/approval after attestation) — NHI permission drift. | `consent after review` |
+| AZ-060 | Workload Attestation Overdue | HIGH | Active NHI past its attestation window — nobody has re-attested it inside policy, so it silently drifts off the governance baseline. | `attestation overdue` |
+| AZ-061 | Credential Rotation Overdue (Still Alive) | HIGH | NHI credential past its rotation-policy window while still authenticating — rotation-lifecycle enforcement gap. | `rotation overdue` |
+| AZ-062 | New Active Workload Without Owner | MEDIUM | Newly created workload identity already authenticating with no owner on record — ungoverned from first use. | `no owner on record` |
 
-Each lifecycle finding is pre-enriched, carries an `OWASP NHI` compliance mapping, references its source Entra evidence events, and is exported into the same AI-PDF / PDF / Excel / CSV artifacts. **Feed absent → these findings are not emitted**; the 80-finding baseline and all exporters are byte-identical.**Specific findings added:** The lifecycle feed (if supplied) adds the five NHI lifecycle findings listed above (AZ-055 – AZ-059); without a feed, the total stays at **80** exactly.
+Each lifecycle finding is pre-enriched, carries an `OWASP NHI` compliance mapping, references its source Entra evidence events, and is exported into the same AI-PDF / PDF / Excel / CSV artifacts. **Feed absent → these findings are not emitted**; the 80-finding baseline and all exporters are byte-identical.**Specific findings added:** The lifecycle feed (if supplied) adds the eight NHI lifecycle findings listed above (AZ-055 – AZ-062); without a feed, the total stays at **80** exactly. A supplied feed also drives the feed-gated per-identity NHI Lifecycle Dashboard (identity, last sign-in, sign-in count, activity period, credential type, lifecycle stages, attestation / rotation / onboarding / cross-source).
 
 ---
 

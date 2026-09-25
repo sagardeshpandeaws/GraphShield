@@ -136,9 +136,9 @@ Workload identity lifecycle governance — service principal ownership, applicat
 | AZ-053 | Service Principals Owned by Azure Groups | MEDIUM | SPs owned by groups — diffuse accountability with no named individual reviewing credentials or consent |
 | AZ-054 | Legacy / Unknown Service Principal Types | LOW | SPs with 'Legacy' or 'Unknown' service principal type — typically pre-Graph-era, undocumented, and outside modern lifecycle tooling |
 
-#### Optional NHI Lifecycle Findings (feed-gated — AZ-055 → AZ-059)
+#### Optional NHI Lifecycle Findings (feed-gated — AZ-055 → AZ-062)
 
-The five lifecycle findings below are **emitted only when an Entra lifecycle feed is supplied** (`GRAPH_SHIELD_LIFECYCLE_FEED` env → JSON path / glob / in-memory dict). Without a feed they do **not** run, so the 80-finding baseline is unchanged. Each carries an `OWASP NHI` compliance mapping and Entra sign-in/audit evidence.
+The eight lifecycle findings below are **emitted only when an Entra lifecycle feed is supplied** (`GRAPH_SHIELD_LIFECYCLE_FEED` env → JSON path / glob / in-memory dict). Without a feed they do **not** run, so the 80-finding baseline is unchanged. Each carries an `OWASP NHI` compliance mapping and Entra sign-in/audit evidence.
 
 | AZ ID | Finding | Severity | Rationale / Source Evidence |
 |--------|---------|----------|----------------------------|
@@ -147,6 +147,9 @@ The five lifecycle findings below are **emitted only when an Entra lifecycle fee
 | AZ-057 | Credential-Expired Identity Still Alive | HIGH | Client-secret/credential-expired NHI still authenticating — credential lifecycle breach; signal `credential expired`. |
 | AZ-058 | Sign-In Anomaly (NHI) | MEDIUM | Anomalous/nonstandard workload sign-in (impossible travel, unfamiliar client) — NHI compromise indicator; signal `sign-in anomaly`. |
 | AZ-059 | Consent Granted After Review | LOW | Consent/permission granted following post-review activity — drift after attestation; signal `consent after review`. |
+| AZ-060 | Workload Attestation Overdue | HIGH | Active NHI whose attestation window has lapsed — no re-attestation inside the policy window, drifting out of the governance baseline; signal `attestation overdue`. |
+| AZ-061 | Credential Rotation Overdue (Still Alive) | HIGH | NHI credential past its rotation-policy window while the identity keeps authenticating — standing rotation-lifecycle enforcement gap; signal `rotation overdue`. |
+| AZ-062 | New Active Workload Without Owner | MEDIUM | Workload identity created inside the onboarding window that is already authenticating with no owner on record — ungoverned from day one; signal `no owner on record`. |
 
 ---
 
@@ -162,7 +165,9 @@ The five lifecycle findings below are **emitted only when an Entra lifecycle fee
 | 6 | Non-Human Identity Governance | 14 Azure (AZ-041–AZ-054) | CRITICAL–LOW |
 | **Total (baseline)** | | **26 AD + 54 Azure = 80** | |
 
-A lifecycle feed (AZ-055 → AZ-059, above) is **optional and gated** — when supplied the total reaches **85**, otherwise the 80-finding baseline is unchanged. The findings tables in scope are version-stamped (ADR-021 | Findings | 80 baseline findings: 26 AD + 54 Azure (feed-gated lifecycle adds AZ-055 → AZ-059) |).
+A lifecycle feed (AZ-055 → AZ-062, above) is **optional and gated** — when supplied the total reaches **88**, otherwise the 80-finding baseline is unchanged. The findings tables in scope are version-stamped (ADR-021 | Findings | 80 baseline findings: 26 AD + 54 Azure (feed-gated lifecycle adds AZ-055 → AZ-062) |).
+
+When a lifecycle feed is supplied, the app also renders a **per-identity NHI Lifecycle Dashboard** (`lifecycle_dashboard_rows()` → feed-gated `st.dataframe`): workload identity, last sign-in, sign-in count, activity period, credential type, lifecycle stages, attestation / rotation / onboarding / cross-source status. With no feed the dashboard renders nothing and the 80-finding baseline is untouched.
 
 Data source: BloodHound CE (Active Directory) + AzureHound (Entra ID) via Neo4j graph database. All findings are evidence-based using actual graph relationships and attack paths, not theoretical configuration checks.
 

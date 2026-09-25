@@ -97,6 +97,7 @@ In the sidebar, choose one assessment scope via the radio buttons:
 | **Zero Trust Identity Hardening Review** | 11 Azure findings — MFA gaps, CA policy gaps, PIM audit, legacy auth, logging, etc. |
 | **Security Architecture Simulation** | 9 Azure findings — Graph API abuse, PRT token abuse, device join abuse, MI token theft, etc. |
 | **Non-Human Identity Governance** | 14 Azure findings — unowned/disabled-owner/single-owner SPs, over-consented apps, privileged SPs without CA, MI & device lifecycle, combined-privilege SPs, legacy SP types |
+| **NHI Lifecycle (feed-gated)** | 8 optional findings (AZ-055→AZ-062) — orphaned / dormant / credential-expired / sign-in anomaly / consent-after-review / attestation-overdue / rotation-overdue / new-unowned-onboarding. Supply a feed via `GRAPH_SHIELD_LIFECYCLE_FEED` or the sidebar uploader; a **per-identity NHI Lifecycle Dashboard** then appears. No feed → no lifecycle findings, baseline unchanged. |
 
 Only the selected scope will be queried from Neo4j and appear in reports.
 
