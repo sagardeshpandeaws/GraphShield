@@ -43,7 +43,7 @@ import os
 
 # ─── Lifecycle evidence keys (per workload identity) ────────────
 # Each entry carries the fields the enrichment layer reads when gating
-# the 5 NHI lifecycle findings.
+# the NHI lifecycle findings.
 LIFECYCLE_KEYS = (
     "last_sign_in",
     "sign_in_count",
@@ -51,7 +51,15 @@ LIFECYCLE_KEYS = (
     "auth_flavor",           # client_secret | certificate | federated | managed_identity
     "event_kinds",           # set of "orphan", "disabled", "credential_expired",
                              #   "consent", "credential_add", "signin_anomaly",
-                             #   "post_review_event"
+                             #   "post_review_event", "attestation_overdue",
+                             #   "rotation_overdue", "onboarding_gap"
+    "attestation",           # {last_attested_date, attestation_window_days,
+                             #   attestation_status}
+    "rotation",              # {last_rotation_date, rotation_policy_max_age_days,
+                             #   rotation_overdue_days, rotation_status}
+    "onboarding",            # {created_date, onboarding_window_days,
+                             #   onboarding_status, has_owner_ever}
+    "cross_source",          # {feed_sources, merged_at, feeds_merged}
 )
 
 
@@ -171,6 +179,23 @@ def _signin_events(item):
     if any(tok in joined for tok in ("after review", "post attestation", "after attestation",
                                      "re-opened", "after remediation")):
         kinds.add("post_review_event")
+    if any(tok in joined for tok in ("attestation overdue", "attestation window lapsed",
+                                     "attestation expired", "no attestation",
+                                     "attestation gap", "missed attestation",
+                                     "attestation_outdated", "attestation alarm",
+                                     "attestation overdue warning")):
+        kinds.add("attestation_overdue")
+    if any(tok in joined for tok in ("rotation overdue", "rotation window exceeded",
+                                     "rotation policy exceeded", "rotation expired",
+                                     "rotation overdue warning", "credential rotation overdue",
+                                     "rotation_gap", "missed rotation")):
+        kinds.add("rotation_overdue")
+    if any(tok in joined for tok in ("onboarding gap", "never onboarded",
+                                     "no onboarding record", "missing onboarding",
+                                     "onboarding_gap", "no owner on record",
+                                     "unowned new", "newly created without owner",
+                                     "onboarding pending")):
+        kinds.add("onboarding_gap")
     return kinds
 
 
@@ -417,6 +442,91 @@ LIFECYCLE_FINDING_DEFS = {
          "AZ_ADD_OWNER": "AZ_LC_CONSENT_AFTER_REVIEW"},
         ["First-party Microsoft service principals"],
     ),
+    # ─── NHI lifecycle assessment (feed-gated, deterministic) ────
+    # Three recommended lifecycle-time governance findings emitted ONLY
+    # when the feed's classifier marks the workload identity with the
+    # matching NHI attestation/rotation/onboarding lifecycle event kind.
+    # No feed / no matching kind → no-op → the deterministic 80-finding
+    # baseline and every exporter stay untouched.
+    "AZ_LC_ATTESTATION_OVERDUE": (
+        "Workload Attestation Overdue — NHI Attestation Lifecycle Gap",
+        "az_lc_attestation_overdue",
+        ("managed_identity", "federated", "client_secret"),
+        ("attestation_overdue",),
+        "HIGH",
+        "T1098",
+        (
+            "The lifecycle feed shows the workload identity's attestation "
+            "window has lapsed — last attestation is older than the "
+            "attestation_window_days period on record, yet the identity "
+            "remains active. An NHI that nobody has re-attested in the "
+            "policy window is drifting out of the governance baseline "
+            "without triggering re-onboarding."
+        ),
+        [
+            "Re-run the attestation process and record a new attestation date",
+            "Shorten attestation windows for high-privilege workload identities",
+            "Flag identities whose attestation window lapsed with no re-attestation",
+        ],
+        [
+            "Entra attestation/audit feed: last_attested_date older than attestation_window_days",
+        ],
+        {"AZ_ATTESTATION": "AZ_LC_ATTESTATION_OVERDUE",
+         "AZ_SP_ATTESTATION": "AZ_LC_ATTESTATION_OVERDUE"},
+        ["First-party Microsoft service principals"],
+    ),
+    "AZ_LC_ROTATION_OVERDUE_ALIVE": (
+        "Workload Credential Rotation Overdue — NHI Rotation Lifecycle Gap",
+        "az_lc_rotation_overdue_alive",
+        ("client_secret", "managed_identity"),
+        ("rotation_overdue",),
+        "HIGH",
+        "T1098",
+        (
+            "The lifecycle feed records a credential whose rotation is "
+            "overdue — last rotation predates the rotation_policy_max_age_days "
+            "period on record — while the workload identity is still "
+            "alive and authenticating. An NHI credential past its rotation "
+            "policy is a standing rotation-lifecycle enforcement gap."
+        ),
+        [
+            "Rotate the credential to conform to the rotation policy window",
+            "Set up automated rotation with a standing credential-add pipeline",
+            "Detect workload identities past their rotation policy window",
+        ],
+        [
+            "Entra credential/audit feed: rotation_policy_max_age_days exceeded by credential age",
+        ],
+        {"AZ_ROTATION_OVERDUE": "AZ_LC_ROTATION_OVERDUE_ALIVE",
+         "AZ_SP_ROTATION": "AZ_LC_ROTATION_OVERDUE_ALIVE"},
+        ["First-party Microsoft service principals"],
+    ),
+    "AZ_LC_NEW_UNOWNED_ACTIVE": (
+        "New Active Workload Without Owner — NHI Onboarding Governance Gap",
+        "az_lc_new_unowned_active",
+        ("client_secret", "managed_identity"),
+        ("onboarding_gap",),
+        "MEDIUM",
+        "T1098",
+        (
+            "The lifecycle feed shows a workload identity created within "
+            "the onboarding_window_days period that is already authenticating "
+            "yet carries no owner attestation on record. A brand-new NHI "
+            "that goes live without being onboarded to the ownership "
+            "baseline is ungoverned from day one."
+        ),
+        [
+            "Assign an owner and complete onboarding attestation before granting access",
+            "Enforce an owner-required policy for all newly created workload identities",
+            "Gate live sign-in on completed NHI onboarding for new identities",
+        ],
+        [
+            "Entra onboarding/audit feed: created within onboarding_window_days, no owner, active sign-in",
+        ],
+        {"AZ_NEW_UNOWNED": "AZ_LC_NEW_UNOWNED_ACTIVE",
+         "AZ_SP_NEW_UNOWNED": "AZ_LC_NEW_UNOWNED_ACTIVE"},
+        ["First-party Microsoft service principals"],
+    ),
 }
 
 
@@ -492,6 +602,47 @@ def build_lifecycle_findings(lifecycle_evidence):
         seen.add(f["id"])
         out.append(f)
     return out
+
+
+def lifecycle_dashboard_rows(lifecycle_evidence):
+    """Per-identity NHI lifecycle dashboard rows (feed-gated, deterministic).
+
+    Returns ``[]`` when ``lifecycle_evidence`` is empty / no feed supplied,
+    so the dashboard renders nothing and the deterministic baseline is
+    untouched. One row per workload identity, sorted by identity key for
+    stable ordering across reruns.
+
+    Columns are derived only from the lifecycle evidence the module already
+    collects (see ``LIFECYCLE_KEYS``) - no new data sources, no heuristics:
+      identity, last_sign_in, sign_in_count, activity_period_days,
+      auth_flavor, lifecycle_stages, attestation, rotation, onboarding,
+      cross_source
+    """
+    if not lifecycle_evidence:
+        return []
+    rows = []
+    for key in sorted(lifecycle_evidence):
+        e = lifecycle_evidence[key] or {}
+        stages = e.get("event_kinds") or []
+        if isinstance(stages, (set, frozenset)):
+            stages = sorted(stages)
+        att = e.get("attestation") or {}
+        rot = e.get("rotation") or {}
+        onb = e.get("onboarding") or {}
+        xsrc = e.get("cross_source") or {}
+        rows.append({
+            "identity": key,
+            "last_sign_in": e.get("last_sign_in"),
+            "sign_in_count": e.get("sign_in_count", 0),
+            "activity_period_days": e.get("activity_period_days"),
+            "auth_flavor": e.get("auth_flavor", "client_secret"),
+            "lifecycle_stages": ", ".join(stages) if stages else "-",
+            "attestation": att.get("attestation_status") or "-",
+            "rotation": rot.get("rotation_status") or "-",
+            "onboarding": onb.get("onboarding_status") or "-",
+            "cross_source": xsrc.get("merged_at") or "-",
+        })
+    return rows
 
 
 def main():

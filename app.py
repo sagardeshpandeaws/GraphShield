@@ -530,6 +530,7 @@ if st.session_state.findings is None or reload_btn or version_changed:
     # returns {} → build_lifecycle_findings([]) → [] → the 80-finding
     # baseline is untouched. When present → appends the feed-gated NHI
     # lifecycle governance findings (NHI-2, exporter-ready).
+    lifecycle_evidence = {}
     lifecycle_feed = os.environ.get("GRAPH_SHIELD_LIFECYCLE_FEED", "").strip()
     if not lifecycle_feed:
         # Rerun restore: rehydrate the feed from the per-client cache
@@ -698,6 +699,42 @@ fig = go.Figure(go.Indicator(
     }
 ))
 st.plotly_chart(fig, use_container_width=True)
+
+# ─── Per-identity NHI lifecycle dashboard (feed-gated) ──────────
+# Renders only when a lifecycle feed supplied evidence; no feed -> nothing
+# rendered here, baseline untouched. Rows come from the module's
+# lifecycle_dashboard_rows() (deterministic, sorted by identity).
+try:
+    from analytics.nhi_lifecycle import lifecycle_dashboard_rows
+    _nhi_rows = lifecycle_dashboard_rows(lifecycle_evidence)
+except Exception:
+    _nhi_rows = []
+if _nhi_rows:
+    _nhi_total_signins = sum(int(r.get("sign_in_count") or 0) for r in _nhi_rows)
+    _nhi_staged = [r for r in _nhi_rows if r.get("lifecycle_stages") not in (None, "", "-")]
+    st.divider()
+    st.header("NHI Lifecycle Dashboard")
+    st.caption(
+        f"{len(_nhi_rows)} workload identities | {_nhi_total_signins} sign-in events | "
+        f"{len(_nhi_staged)} with lifecycle-stage signals"
+    )
+    st.dataframe(
+        _nhi_rows,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "identity": "Workload Identity",
+            "last_sign_in": "Last Sign-In",
+            "sign_in_count": "Sign-Ins",
+            "activity_period_days": "Activity (days)",
+            "auth_flavor": "Credential Type",
+            "lifecycle_stages": "Lifecycle Stages",
+            "attestation": "Attestation",
+            "rotation": "Rotation",
+            "onboarding": "Onboarding",
+            "cross_source": "Cross-Source",
+        },
+    )
 
 # ─── AI EXECUTIVE SUMMARY ────────────────────────────────────
 st.divider()

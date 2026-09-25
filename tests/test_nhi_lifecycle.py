@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 from analytics.nhi_lifecycle import (
     LIFECYCLE_KEYS,
+    lifecycle_dashboard_rows,
     LIFECYCLE_FINDING_DEFS,
     load_lifecycle_feed,
     feed_summary,
@@ -142,3 +143,123 @@ def test_lifecycle_findings_disjoint_from_finding_defs():
     is isolated from the deterministic finding registries by design."""
     assert LIFECYCLE_IDS
     assert set(LIFECYCLE_KEYS)
+
+# --- Contract: the THREE extended NHI lifecycle stages are feed-gated,
+# deterministic, exporter-ready (NHI lifecycle assessment) ---
+def _stage_feed(kind):
+    """A minimal REAL feed item whose classifier tokens emit EXACTLY one
+    lifecycle kind (attestation_overdue / rotation_overdue / onboarding_gap),
+    plus a benign sign-in so the identity counts as live."""
+
+    token = {
+        "attestation_overdue": ("attestation overdue", "federated"),
+        "rotation_overdue": ("rotation overdue", "client_secret"),
+        "onboarding_gap": ("no owner on record", "client_secret"),
+    }[kind]
+    return {
+        "value": [
+            {
+                "appId": "91919191-9191-9191-9191-919191919191",
+                "DisplayName": "Lifecycle Stage Probe SP",
+                "createdDateTime": "2024-01-10T08:00:00Z",
+                "lastSignInDateTime": "2026-09-21T12:00:00Z",
+                "authenticationRequirement": "singleFactor" if token[1] == "client_secret" else "federated",
+                "userAgent": token[0] + " nhifeed probe",
+                "conditionalAccessStatus": token[0],
+            }
+        ]
+    }
+
+
+def test_each_extended_lifecycle_stage_gates_its_own_finding():
+    """With a feed whose classifier emits only attestation_overdue, only
+    AZ_LC_ATTESTATION_OVERDUE fires; isolate the other two stages too.
+    Each is feed-gated, deterministic, exporter-ready."""
+    stage_to_id = {
+        "attestation_overdue": "AZ_LC_ATTESTATION_OVERDUE",
+        "rotation_overdue": "AZ_LC_ROTATION_OVERDUE_ALIVE",
+        "onboarding_gap": "AZ_LC_NEW_UNOWNED_ACTIVE",
+    }
+    for kind, fid in stage_to_id.items():
+        ev = load_lifecycle_feed(_stage_feed(kind))
+        findings = build_lifecycle_findings(ev)
+        ids = [f["id"] for f in findings]
+        assert fid in ids, (kind, ids)
+        for other in stage_to_id.values():
+            if other != fid:
+                assert other not in ids, (other, ids)
+
+
+def test_extended_lifecycle_findings_are_exporter_ready():
+    """Every extended lifecycle finding carries the front-of-house NHI
+    exporter contract: id/title/category/group/source/severity/mitre/
+    impact/remediation/detection/compliance + compliance tail, with the
+    OWASP NHI key present under compliance like the original five."""
+    for kind, fid in {
+        "attestation_overdue": "AZ_LC_ATTESTATION_OVERDUE",
+        "rotation_overdue": "AZ_LC_ROTATION_OVERDUE_ALIVE",
+        "onboarding_gap": "AZ_LC_NEW_UNOWNED_ACTIVE",
+    }.items():
+        findings = [
+            f for f in build_lifecycle_findings(load_lifecycle_feed(_stage_feed(kind)))
+            if f["id"] == fid
+        ]
+        assert findings, fid
+        f = findings[0]
+        assert set(f) >= {
+            "id", "title", "category", "group", "source", "severity",
+            "mitre", "impact", "remediation", "detection", "compliance",
+            "evidence", "exclusions", "linked_findings", "confidence",
+            "ad_objects",
+        }
+        assert "OWASP NHI" in f["compliance"], (fid, f["compliance"])
+        assert f["compliance"]["OWASP NHI"] == "NHI", (fid, f["compliance"])
+
+
+def test_extended_lifecycle_stages_never_leak_into_feed_absent_noop():
+    """No feed -> build_lifecycle_findings({}) == [] -> the extended stages
+    are no-ops, preserving the deterministic baseline."""
+    assert build_lifecycle_findings({}) == []
+
+
+# --- Per-identity NHI lifecycle dashboard contract ---
+def test_lifecycle_dashboard_rows_is_feed_gated_and_deterministic():
+    """No feed -> [] (dashboard renders nothing, baseline untouched)."""
+    assert lifecycle_dashboard_rows({}) == []
+
+
+def test_lifecycle_dashboard_rows_shape_and_sorting():
+    """One row per workload identity, sorted by identity key, with the
+    exporter-visible dashboard columns derived only from collected evidence."""
+    feed = {
+        "value": [
+            {
+                "appId": "22222222-2222-2222-2222-222222222222",
+                "DisplayName": "B SP",
+                "createdDateTime": "2024-03-01T08:00:00Z",
+                "userAgent": "rotation overdue nhifeed",
+                "conditionalAccessStatus": "rotation overdue",
+            },
+            {
+                "appId": "11111111-1111-1111-1111-111111111111",
+                "DisplayName": "A SP",
+                "createdDateTime": "2024-04-01T08:00:00Z",
+                "userAgent": "attestation overdue nhifeed",
+                "conditionalAccessStatus": "attestation overdue",
+            },
+        ]
+    }
+    rows = lifecycle_dashboard_rows(load_lifecycle_feed(feed))
+    assert len(rows) == 2
+    assert [r["identity"] for r in rows] == sorted(r["identity"] for r in rows)
+    expected_cols = {
+        "identity", "last_sign_in", "sign_in_count", "activity_period_days",
+        "auth_flavor", "lifecycle_stages", "attestation", "rotation",
+        "onboarding", "cross_source",
+    }
+    for r in rows:
+        assert set(r) == expected_cols, set(r) ^ expected_cols
+        assert r["lifecycle_stages"] != "-", r
+    stages = " ".join(r["lifecycle_stages"] for r in rows)
+    assert "attestation_overdue" in stages
+    assert "rotation_overdue" in stages
