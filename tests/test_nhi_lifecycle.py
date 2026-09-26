@@ -261,7 +261,8 @@ def test_lifecycle_dashboard_rows_shape_and_sorting():
     expected_cols = {
         "identity", "last_sign_in", "sign_in_count", "activity_period_days",
         "auth_flavor", "lifecycle_stages", "attestation", "rotation",
-        "onboarding", "cross_source",
+        "onboarding", "cross_source", "graph_findings",
+        "confirmed_by_both_sources",
     }
     for r in rows:
         assert set(r) == expected_cols, set(r) ^ expected_cols
@@ -472,3 +473,35 @@ def test_correlation_handle_is_not_leaked_to_exporters():
     correlate_nhi_sources(findings, ev)
     for f in findings:
         assert "nhi_identity_key" not in f, f["id"]
+
+
+def test_dashboard_surfaces_graph_corroboration_per_identity():
+    """A CISO must see, in one row, that an identity is confirmed by Neo4j
+    and the logs - the dashboard exposes the graph findings per identity."""
+    ev = load_lifecycle_feed(_CORR_FEED)
+    findings = [_graph_nhi_finding()] + build_lifecycle_findings(ev)
+    corr = {}
+    correlate_nhi_sources(findings, ev, corr)
+    rows = lifecycle_dashboard_rows(ev, corr)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["confirmed_by_both_sources"] == "Yes"
+    assert "AZ_SP_NO_OWNER" in r["graph_findings"]
+
+
+def test_dashboard_without_correlation_map_is_unchanged():
+    """Omitting the map keeps the new columns at '-' (safe default)."""
+    ev = load_lifecycle_feed(_CORR_FEED)
+    r = lifecycle_dashboard_rows(ev)[0]
+    assert r["graph_findings"] == "-"
+    assert r["confirmed_by_both_sources"] == "No"
+
+
+def test_correlation_map_is_keyed_by_identity():
+    corr = {}
+    ev = load_lifecycle_feed(_CORR_FEED)
+    findings = [_graph_nhi_finding()] + build_lifecycle_findings(ev)
+    correlate_nhi_sources(findings, ev, corr)
+    assert len(corr) == 1
+    key = next(iter(corr))
+    assert corr[key]["both_sources"] is True

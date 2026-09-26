@@ -810,7 +810,7 @@ def build_lifecycle_findings(lifecycle_evidence):
     return [merged[fid] for fid in order]
 
 
-def lifecycle_dashboard_rows(lifecycle_evidence):
+def lifecycle_dashboard_rows(lifecycle_evidence, correlation=None):
     """Per-identity NHI lifecycle dashboard rows (feed-gated, deterministic).
 
     Returns ``[]`` when ``lifecycle_evidence`` is empty / no feed supplied,
@@ -822,7 +822,13 @@ def lifecycle_dashboard_rows(lifecycle_evidence):
     collects (see ``LIFECYCLE_KEYS``) - no new data sources, no heuristics:
       identity, last_sign_in, sign_in_count, activity_period_days,
       auth_flavor, lifecycle_stages, attestation, rotation, onboarding,
-      cross_source
+      cross_source, graph_findings, confirmed_by_both_sources
+
+    ``correlation`` is the ``{identity_key: nhi_correlation}`` map produced by
+    :func:`correlate_nhi_sources`; when supplied, each row also shows which
+    graph-derived NHI governance findings corroborate that identity, so a CISO
+    can see identities confirmed by Neo4j *and* the logs in one row. Omitting
+    it (or an empty map) keeps the columns at ``"-"``.
     """
     if not lifecycle_evidence:
         return []
@@ -836,6 +842,8 @@ def lifecycle_dashboard_rows(lifecycle_evidence):
         rot = e.get("rotation") or {}
         onb = e.get("onboarding") or {}
         xsrc = e.get("cross_source") or {}
+        corr = (correlation or {}).get(key) or {}
+        graph_ids = corr.get("graph_findings") or []
         rows.append({
             "identity": key,
             "last_sign_in": e.get("last_sign_in"),
@@ -847,11 +855,15 @@ def lifecycle_dashboard_rows(lifecycle_evidence):
             "rotation": rot.get("rotation_status") or "-",
             "onboarding": onb.get("onboarding_status") or "-",
             "cross_source": xsrc.get("merged_at") or "-",
+            "graph_findings": ", ".join(graph_ids) if graph_ids else "-",
+            "confirmed_by_both_sources": (
+                "Yes" if corr.get("both_sources") else "No"
+            ),
         })
     return rows
 
 
-def correlate_nhi_sources(findings, lifecycle_evidence):
+def correlate_nhi_sources(findings, lifecycle_evidence, out=None):
     """Correlate graph-derived NHI findings with feed-derived lifecycle
     findings **per workload identity**.
 
@@ -865,6 +877,9 @@ def correlate_nhi_sources(findings, lifecycle_evidence):
     returns the list of findings for convenience. Deterministic: identity
     keys and finding ids are sorted, and nothing is invented when either
     source is absent (a no-feed run simply yields no correlated identities).
+
+    Pass ``out`` (a dict) to receive the ``{identity_key: block}`` map for
+    dashboard / report rendering.
 
     ``nhi_correlation`` = {
         "identity": "<display label>",
@@ -935,6 +950,8 @@ def correlate_nhi_sources(findings, lifecycle_evidence):
             "lifecycle_findings": life_ids,
             "both_sources": bool(graph_ids and life_ids),
         }
+        if out is not None:
+            out[key] = dict(block)
         for f in findings:
             if f.get("nhi_identity_key") == key or (
                 f in nhi_graph and f["id"] in graph_ids

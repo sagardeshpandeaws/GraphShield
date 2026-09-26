@@ -531,6 +531,7 @@ if st.session_state.findings is None or reload_btn or version_changed:
     # baseline is untouched. When present → appends the feed-gated NHI
     # lifecycle governance findings (NHI-2, exporter-ready).
     lifecycle_evidence = {}
+    nhi_correlation = {}
     lifecycle_feed = os.environ.get("GRAPH_SHIELD_LIFECYCLE_FEED", "").strip()
     if not lifecycle_feed:
         # Rerun restore: rehydrate the feed from the per-client cache
@@ -559,7 +560,7 @@ if st.session_state.findings is None or reload_btn or version_changed:
                 )
                 _nhi_feed_findings = build_lifecycle_findings(lifecycle_evidence)
                 findings = findings + _nhi_feed_findings
-                _correlate_nhi(findings, lifecycle_evidence)
+                _correlate_nhi(findings, lifecycle_evidence, nhi_correlation)
         except Exception:
             pass  # deterministic no-op on any feed/adapter failure
 
@@ -718,7 +719,8 @@ st.plotly_chart(fig, use_container_width=True)
 # lifecycle_dashboard_rows() (deterministic, sorted by identity).
 try:
     from analytics.nhi_lifecycle import lifecycle_dashboard_rows
-    _nhi_rows = lifecycle_dashboard_rows(lifecycle_evidence)
+    _nhi_rows = lifecycle_dashboard_rows(
+        lifecycle_evidence, nhi_correlation)
 except Exception:
     _nhi_rows = []
 if _nhi_rows:
@@ -726,9 +728,12 @@ if _nhi_rows:
     _nhi_staged = [r for r in _nhi_rows if r.get("lifecycle_stages") not in (None, "", "-")]
     st.divider()
     st.header("NHI Lifecycle Dashboard")
+    _nhi_both = [r for r in _nhi_rows
+                 if r.get("confirmed_by_both_sources") == "Yes"]
     st.caption(
         f"{len(_nhi_rows)} workload identities | {_nhi_total_signins} sign-in events | "
-        f"{len(_nhi_staged)} with lifecycle-stage signals"
+        f"{len(_nhi_staged)} with lifecycle-stage signals | "
+        f"{len(_nhi_both)} confirmed by both Neo4j and logs"
     )
     st.dataframe(
         _nhi_rows,
@@ -745,6 +750,8 @@ if _nhi_rows:
             "rotation": "Rotation",
             "onboarding": "Onboarding",
             "cross_source": "Cross-Source",
+            "graph_findings": "Graph NHI Findings",
+            "confirmed_by_both_sources": "Both Sources",
         },
     )
 
