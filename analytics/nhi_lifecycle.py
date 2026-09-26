@@ -165,6 +165,9 @@ def _signin_events(item):
         kinds.add("orphan")
     if any(tok in joined for tok in ("disabled", "deactivated", "blocked")):
         kinds.add("disabled")
+    if any(tok in joined for tok in ("dormant", "inactive", "idle account",
+                                     "dormant high privilege", "reactivation")):
+        kinds.add("dormant")
     if any(tok in joined for tok in ("credential expired", "expired", "secret expired",
                                      "password expired")):
         kinds.add("credential_expired")
@@ -199,30 +202,131 @@ def _signin_events(item):
     return kinds
 
 
+def _first(item, *names):
+    """Return the first present, non-empty value among ``names``."""
+    for n in names:
+        v = item.get(n)
+        if v not in (None, ""):
+            return v
+    return None
+
+
+def _int_or_none(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _structured_lifecycle(item):
+    """Extract the optional structured lifecycle blocks an Entra attestation /
+    rotation / onboarding feed may carry.
+
+    Returns a dict with only the blocks the feed actually supplied, so feeds
+    that omit them stay fully backward compatible (no fabricated values).
+    """
+    out = {}
+
+    att = {}
+    last_attested = _iso_date(_first(item, "lastAttestedDate", "last_attested_date",
+                                     "lastAttestationDate", "last_attestation_date"))
+    if last_attested:
+        att["last_attested_date"] = last_attested
+    window = _int_or_none(_first(item, "attestationWindowDays", "attestation_window_days"))
+    if window is not None:
+        att["attestation_window_days"] = window
+    att_status = _first(item, "attestationStatus", "attestation_status")
+    if att_status:
+        att["attestation_status"] = str(att_status)
+    if att:
+        out["attestation"] = att
+
+    rot = {}
+    last_rot = _iso_date(_first(item, "lastRotationDate", "last_rotation_date",
+                                "lastCredentialRotationDate", "last_credential_rotation_date"))
+    if last_rot:
+        rot["last_rotation_date"] = last_rot
+    max_age = _int_or_none(_first(item, "rotationPolicyMaxAgeDays", "rotation_policy_max_age_days"))
+    if max_age is not None:
+        rot["rotation_policy_max_age_days"] = max_age
+    overdue = _int_or_none(_first(item, "rotationOverdueDays", "rotation_overdue_days"))
+    if overdue is not None:
+        rot["rotation_overdue_days"] = overdue
+    rot_status = _first(item, "rotationStatus", "rotation_status")
+    if rot_status:
+        rot["rotation_status"] = str(rot_status)
+    if rot:
+        out["rotation"] = rot
+
+    # The onboarding block is only emitted when the feed actually carries
+    # onboarding context - never inferred from a bare createdDateTime, which
+    # every sign-in record has. Nothing is fabricated.
+    onb = {}
+    owin = _int_or_none(_first(item, "onboardingWindowDays", "onboarding_window_days"))
+    if owin is not None:
+        onb["onboarding_window_days"] = owin
+    ostatus = _first(item, "onboardingStatus", "onboarding_status")
+    if ostatus:
+        onb["onboarding_status"] = str(ostatus)
+    owner = _first(item, "hasOwnerEver", "has_owner_ever")
+    if owner is not None:
+        onb["has_owner_ever"] = bool(owner) if isinstance(owner, bool) else \
+            str(owner).strip().lower() in ("1", "true", "yes")
+    created = _iso_date(_first(item, "createdDate", "created_date", "createdDateTime"))
+    if created and onb:
+        # created_date only carries onboarding meaning alongside explicit
+        # onboarding context.
+        onb["created_date"] = created
+    if onb:
+        out["onboarding"] = onb
+
+    return out
+
+
 def _process_files(feed_source):
     """Process a path/glob that may point at one or many JSON feeds."""
     if isinstance(feed_source, dict):
-        return [_feed_to_evidence(feed_source, {})]
+        return [_feed_to_evidence(feed_source, {}, "in-memory")]
     matches = []
+    inline = []
     if isinstance(feed_source, str):
         if os.path.isfile(feed_source):
             matches = [feed_source]
         else:
             matches = sorted(_glob.glob(feed_source))
     elif isinstance(feed_source, (list, tuple)):
-        matches = [p for p in feed_source if isinstance(p, str) and os.path.isfile(p)]
+        for part in feed_source:
+            if isinstance(part, dict):
+                # in-memory payload (e.g. the per-client cache restore path)
+                inline.append(part)
+            elif isinstance(part, str) and os.path.isfile(part):
+                matches.append(part)
 
     out = {}
-    for path in matches:
+    for payload in inline:
+        out = _feed_to_evidence(payload, out, "in-memory")
+    for path in sorted(matches):
         data = _read_json(path)
         if data is None:
             continue
-        out = _feed_to_evidence(data, out)
+        out = _feed_to_evidence(data, out, os.path.basename(path))
     return [out]
 
 
-def _feed_to_evidence(feed, acc):
-    """Merge one feed payload into the evidence accumulator (idempotent)."""
+def _feed_to_evidence(feed, acc, source_label="in-memory"):
+    """Merge one feed payload into the evidence accumulator (idempotent).
+
+    Per identity it accumulates:
+      * ``event_kinds``   - classified lifecycle signal kinds (set)
+      * ``sign_in_count`` - number of workload sign-in records
+      * ``last_sign_in``  - most recent sign-in date
+      * ``auth_flavor``   - coarse credential type
+      * ``events``        - the source records behind the signal, so findings
+                            can cite real Entra evidence instead of an empty list
+      * ``attestation`` / ``rotation`` / ``onboarding`` - structured blocks,
+                            only when the feed actually supplies them
+      * ``cross_source``  - which feed(s) contributed this identity
+    """
     for item in _iter_signin_items(feed):
         key = _identity_key(item)
         if not key:
@@ -233,11 +337,12 @@ def _feed_to_evidence(feed, acc):
             "activity_period_days": None,
             "auth_flavor": "client_secret",
             "event_kinds": set(),
+            "events": [],
         })
         delta = _signin_events(item)
         if not delta and not item.get("appId") and not item.get("servicePrincipalId"):
             # Non-workload (user sign-in) entries carry no app id; counts
-            # them separately is out of scope — skip to stay workload-only.
+            # them separately is out of scope - skip to stay workload-only.
             continue
         entry["event_kinds"] |= delta
         entry["sign_in_count"] += 1
@@ -246,6 +351,26 @@ def _feed_to_evidence(feed, acc):
         if last and (not entry["last_sign_in"] or last > entry["last_sign_in"]):
             entry["last_sign_in"] = last
         entry["auth_flavor"] = _auth_flavor(item)
+
+        # Source evidence record (bounded, deterministic) so findings can cite it.
+        entry["events"].append({
+            "timestamp": last,
+            "event_kinds": sorted(delta),
+            "auth_flavor": entry["auth_flavor"],
+            "user_agent": _first(item, "userAgent", "UserAgent"),
+            "activity": _first(item, "activity", "Activity"),
+            "status": _first(item, "status", "Status"),
+            "conditional_access_status": _first(item, "conditionalAccessStatus",
+                                                 "ConditionalAccessStatus"),
+            "source": source_label,
+        })
+
+        for block, values in _structured_lifecycle(item).items():
+            entry.setdefault(block, {}).update(values)
+
+        xs = entry.setdefault("cross_source", {"feed_sources": set(), "feeds_merged": 0})
+        xs["feed_sources"].add(source_label)
+        xs["feeds_merged"] = len(xs["feed_sources"])
     return acc
 
 
@@ -258,6 +383,16 @@ def _materialize(evidence):
             continue
         out[key] = dict(entry)
         out[key]["event_kinds"] = sorted(entry["event_kinds"])
+        out[key]["events"] = list(entry.get("events", []))
+        xs = entry.get("cross_source") or {}
+        sources = xs.get("feed_sources") or set()
+        # merged_at is derived from the data (not wall-clock) so the evidence
+        # stays byte-deterministic across reruns.
+        out[key]["cross_source"] = {
+            "feed_sources": sorted(sources),
+            "feeds_merged": len(sources),
+            "merged_at": entry.get("last_sign_in"),
+        }
     return out
 
 
@@ -316,7 +451,10 @@ LIFECYCLE_FINDING_DEFS = {
     "AZ_LC_ACTIVE_ORPHANED": (
         "Active Orphaned Workload Identity — Sign-In After Owner Loss",
         "az_lc_active_orphaned",
-        ("managed_identity", "client_secret"),
+        # every credential flavor: orphaning is an ownership problem, not a
+        # credential-type problem, so a federated/certificate orphan must not
+        # be mislabeled as a dormancy finding.
+        ("managed_identity", "client_secret", "federated", "certificate"),
         ("orphan",),
         "HIGH",
         "T1078.004",
@@ -342,8 +480,10 @@ LIFECYCLE_FINDING_DEFS = {
     "AZ_LC_DORMANT_HIGH_PRIV": (
         "Dormant High-Privilege Workload Identity — Privilege Without Routine Use",
         "az_lc_dormant_high_priv",
-        ("managed_identity", "federated"),
-        ("orphan", "disabled"),
+        ("managed_identity", "federated", "client_secret", "certificate"),
+        # dormancy only — previously included "orphan", which made any
+        # federated orphan double-report as a dormancy finding.
+        ("dormant", "disabled"),
         "HIGH",
         "T1098",
         (
@@ -586,22 +726,32 @@ def build_lifecycle_findings(lifecycle_evidence):
                 "linked_findings": dict(compliance_tail),
                 "exclusions": list(exclusions),
                 "evidence": [dict(e) for e in entry.get("events", [])],
-                "has_evidence": bool(entry),
+                "has_evidence": bool(entry.get("events")),
                 "confidence": "Confirmed" if entry else "No Data",
                 "ad_objects": ent,
                 "truncated": False,
             }
             findings.append(finding)
 
-    # Deduplicate across identities feeding the same finding id.
-    seen = set()
-    out = []
+    # Deduplicate across identities feeding the same finding id, merging the
+    # cited source evidence and the identities behind each finding.
+    merged = {}
+    order = []
     for f in findings:
-        if f["id"] in seen:
+        cur = merged.get(f["id"])
+        if cur is None:
+            merged[f["id"]] = dict(f)
+            merged[f["id"]]["evidence"] = list(f["evidence"])
+            order.append(f["id"])
             continue
-        seen.add(f["id"])
-        out.append(f)
-    return out
+        known = {e.get("source") for e in cur["evidence"]}
+        for ev in f["evidence"]:
+            if ev not in cur["evidence"]:
+                cur["evidence"].append(ev)
+        rel = cur["ad_objects"].get("relationships")
+        if rel is not None and f["ad_objects"].get("relationships"):
+            rel |= f["ad_objects"]["relationships"]
+    return [merged[fid] for fid in order]
 
 
 def lifecycle_dashboard_rows(lifecycle_evidence):

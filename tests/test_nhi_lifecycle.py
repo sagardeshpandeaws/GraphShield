@@ -33,6 +33,11 @@ from analytics.nhi_lifecycle import (
 LIFECYCLE_IDS = set(LIFECYCLE_FINDING_DEFS)
 
 
+def build_lifecycle_feed_evidence_findings(feed):
+    """Small local helper: load a raw feed then build its findings."""
+    return build_lifecycle_findings(load_lifecycle_feed(feed))
+
+
 def _real_feed():
     """A minimal but REAL Entra sign-in / service-principal feed using the
     exact field names the module's token classifier reads
@@ -263,3 +268,113 @@ def test_lifecycle_dashboard_rows_shape_and_sorting():
     stages = " ".join(r["lifecycle_stages"] for r in rows)
     assert "attestation_overdue" in stages
     assert "rotation_overdue" in stages
+
+
+# --- Regressions: the three gaps closed ---
+_STRUCTURED_FEED = {
+    "value": [
+        {
+            "appId": "f0000000-0000-0000-0000-000000000003",
+            "DisplayName": "Full Lifecycle SP",
+            "createdDateTime": "2026-09-01T00:00:00Z",
+            "lastSignInDateTime": "2026-09-25T10:00:00Z",
+            "userAgent": "rotation overdue attestation overdue nhifeed",
+            "conditionalAccessStatus": "rotation overdue",
+            "authenticationRequirement": "singleFactor",
+            "lastAttestedDate": "2024-01-01T00:00:00Z",
+            "attestationWindowDays": 90,
+            "attestationStatus": "overdue",
+            "lastRotationDate": "2024-01-01T00:00:00Z",
+            "rotationPolicyMaxAgeDays": 180,
+            "rotationOverdueDays": 300,
+            "rotationStatus": "overdue",
+            "onboardingStatus": "no_owner",
+            "hasOwnerEver": False,
+            "onboardingWindowDays": 30,
+        }
+    ]
+}
+
+
+def test_findings_cite_real_source_evidence():
+    """Regression: findings used to carry an empty evidence list because the
+    evidence entries never collected the source records. Every lifecycle
+    finding now cites the Entra records behind the signal."""
+    findings = build_lifecycle_findings(load_lifecycle_feed(_STRUCTURED_FEED))
+    assert findings
+    for f in findings:
+        assert f["evidence"], f["id"]
+        assert f["has_evidence"] is True, f["id"]
+        ev = f["evidence"][0]
+        assert set(ev) >= {"timestamp", "event_kinds", "auth_flavor", "source"}
+        assert ev["event_kinds"], f["id"]
+
+
+def test_federated_orphan_is_not_mislabeled_as_dormancy():
+    """Regression: the flavor gate used to block AZ-055 for federated orphans,
+    so they were reported as AZ-056 (dormant high privilege) instead."""
+    feed = {
+        "value": [
+            {
+                "appId": "f0000000-0000-0000-0000-000000000001",
+                "DisplayName": "Federated Orphan",
+                "createdDateTime": "2024-01-01T00:00:00Z",
+                "userAgent": "orphan owner absent nhifeed",
+                "conditionalAccessStatus": "no owner",
+                "authenticationRequirement": "federated",
+            }
+        ]
+    }
+    ids = [f["id"] for f in build_lifecycle_findings(load_lifecycle_feed(feed))]
+    assert "AZ_LC_ACTIVE_ORPHANED" in ids, ids
+    assert "AZ_LC_DORMANT_HIGH_PRIV" not in ids, ids
+
+
+def test_dormant_token_fires_dormancy_finding():
+    """The documented `dormant` feed token must actually classify."""
+    feed = {
+        "value": [
+            {
+                "appId": "f0000000-0000-0000-0000-000000000002",
+                "DisplayName": "Dormant SP",
+                "createdDateTime": "2024-02-01T00:00:00Z",
+                "userAgent": "dormant high privilege reactivation",
+                "conditionalAccessStatus": "dormant high privilege",
+                "authenticationRequirement": "federated",
+            }
+        ]
+    }
+    ids = [f["id"] for f in build_lifecycle_feed_evidence_findings(feed)]
+    assert "AZ_LC_DORMANT_HIGH_PRIV" in ids, ids
+
+
+def test_all_lifecycle_keys_are_populated_when_feed_supplies_them():
+    """Regression: attestation / rotation / onboarding / cross_source were
+    declared in LIFECYCLE_KEYS but never populated, so those dashboard columns
+    always rendered '-'. They now populate from the feed, and stay absent when
+    the feed omits them (nothing is fabricated)."""
+    ev = load_lifecycle_feed(_STRUCTURED_FEED)
+    entry = ev["f0000000-0000-0000-0000-000000000003"]
+    assert set(LIFECYCLE_KEYS) <= set(entry), set(LIFECYCLE_KEYS) - set(entry)
+    assert entry["attestation"]["attestation_status"] == "overdue"
+    assert entry["attestation"]["attestation_window_days"] == 90
+    assert entry["rotation"]["rotation_overdue_days"] == 300
+    assert entry["onboarding"]["has_owner_ever"] is False
+    assert entry["cross_source"]["feeds_merged"] == 1
+    # deterministic: merged_at derived from the data, not wall-clock
+    assert entry["cross_source"]["merged_at"] == entry["last_sign_in"]
+
+    plain = load_lifecycle_feed(_real_feed())
+    for e in plain.values():
+        assert "attestation" not in e
+        assert "rotation" not in e
+        assert "onboarding" not in e
+
+
+def test_cache_restore_tuple_with_inline_dict_is_loaded():
+    """Regression: app.py restores a cached feed as ("__nhi_cache__", dict).
+    That inline dict was silently dropped, so a cached rerun produced no
+    lifecycle evidence at all."""
+    ev = load_lifecycle_feed(("__nhi_cache__", _STRUCTURED_FEED))
+    assert ev
+    assert build_lifecycle_findings(ev)

@@ -143,7 +143,7 @@ The eight lifecycle findings below are **emitted only when an Entra lifecycle fe
 | AZ ID | Finding | Severity | Rationale / Source Evidence |
 |--------|---------|----------|----------------------------|
 | AZ-055 | Active Orphaned Workload Identity | HIGH | Workload identity actively signing in with no accountable owner — no rotation/CA/lifecycle control; NHI lifecycle-feed signal `orphan`. |
-| AZ-056 | Dormant High-Privilege Identity Reactivation | HIGH | Privileged NHI that went dormant then reactivated — dormant account takeover surface; signal `dormant`. |
+| AZ-056 | Dormant High-Privilege Identity Reactivation | HIGH | Privileged NHI that went dormant then reactivated — dormant account takeover surface; signal `dormant` / `disabled`. |
 | AZ-057 | Credential-Expired Identity Still Alive | HIGH | Client-secret/credential-expired NHI still authenticating — credential lifecycle breach; signal `credential expired`. |
 | AZ-058 | Sign-In Anomaly (NHI) | MEDIUM | Anomalous/nonstandard workload sign-in (impossible travel, unfamiliar client) — NHI compromise indicator; signal `sign-in anomaly`. |
 | AZ-059 | Consent Granted After Review | LOW | Consent/permission granted following post-review activity — drift after attestation; signal `consent after review`. |
