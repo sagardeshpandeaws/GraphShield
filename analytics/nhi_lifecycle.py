@@ -368,6 +368,24 @@ def _feed_to_evidence(feed, acc, source_label="in-memory"):
         for block, values in _structured_lifecycle(item).items():
             entry.setdefault(block, {}).update(values)
 
+        # Joinable identity attributes: the graph side keys NHI objects by
+        # AppId / display name (see finding_enrichment AZ_SP_NO_OWNER etc.),
+        # so keep the raw values to let the two sources be correlated.
+        ident = entry.setdefault("identity", {})
+        for attr, fields in (
+            ("app_id", ("appId", "AppId", "applicationId", "ApplicationId")),
+            ("object_id", ("objectId", "ObjectId", "servicePrincipalId",
+                           "ServicePrincipalId", "spObjectId",
+                           "ServicePrincipalObjectId")),
+            ("display_name", ("displayName", "DisplayName", "appDisplayName",
+                              "AppDisplayName")),
+            ("service_principal_name", ("servicePrincipalName",
+                                       "ServicePrincipalName")),
+        ):
+            val = _first(item, *fields)
+            if val and not ident.get(attr):
+                ident[attr] = str(val).strip()
+
         xs = entry.setdefault("cross_source", {"feed_sources": set(), "feeds_merged": 0})
         xs["feed_sources"].add(source_label)
         xs["feeds_merged"] = len(xs["feed_sources"])
@@ -384,6 +402,7 @@ def _materialize(evidence):
         out[key] = dict(entry)
         out[key]["event_kinds"] = sorted(entry["event_kinds"])
         out[key]["events"] = list(entry.get("events", []))
+        out[key]["identity"] = dict(entry.get("identity") or {})
         xs = entry.get("cross_source") or {}
         sources = xs.get("feed_sources") or set()
         # merged_at is derived from the data (not wall-clock) so the evidence
@@ -670,11 +689,47 @@ LIFECYCLE_FINDING_DEFS = {
 }
 
 
+# Bucket schema mirrors analytics.finding_enrichment._empty_buckets() so
+# lifecycle findings carry the same ad_objects shape as graph-derived
+# findings and every exporter (CSV/Excel/PDF/AI-PDF) renders the Azure
+# sections for them instead of empty lists.
+_AD_BUCKETS = (
+    "users", "groups", "computers", "gpos", "organizational_units", "domains",
+    "service_principals", "managed_identities", "applications", "key_vaults",
+    "tenants", "subscriptions", "resource_groups", "management_groups",
+)
+
+
 def _empty_ad_objects():
-    return {
-        "users": set(), "groups": set(), "computers": set(),
-        "gpos": set(), "organizational_units": set(), "relationships": set(),
-    }
+    out = {k: set() for k in _AD_BUCKETS}
+    out["relationships"] = set()
+    return out
+
+
+def _identity_display(entry):
+    """Human label for a lifecycle identity, matching the baseline NHI
+    convention ``"<Principal> (<AppId>)"`` used by enrich_finding."""
+    ident = entry.get("identity") or {}
+    name = (ident.get("display_name") or ident.get("service_principal_name")
+            or entry.get("auth_flavor") or "workload identity")
+    app_id = ident.get("app_id")
+    return f"{name} ({app_id})" if app_id else name
+
+
+def _ad_objects_for(entry):
+    """Build baseline-convention ad_objects for one lifecycle identity."""
+    ent = _empty_ad_objects()
+    ident = entry.get("identity") or {}
+    label = _identity_display(entry)
+    flavor = entry.get("auth_flavor", "client_secret")
+    if flavor == "managed_identity":
+        ent["managed_identities"].add(label)
+    else:
+        ent["service_principals"].add(label)
+    if ident.get("display_name"):
+        ent["applications"].add(ident["display_name"])
+    ent["relationships"].add(label)
+    return ent
 
 
 def build_lifecycle_findings(lifecycle_evidence):
@@ -706,8 +761,7 @@ def build_lifecycle_findings(lifecycle_evidence):
             if not (set(kinds) & event_kinds):
                 continue
 
-            ent = _empty_ad_objects()
-            ent["relationships"].add(key)
+            ent = _ad_objects_for(entry)
             finding = {
                 "id": fid,
                 "title": title,
@@ -730,6 +784,8 @@ def build_lifecycle_findings(lifecycle_evidence):
                 "confidence": "Confirmed" if entry else "No Data",
                 "ad_objects": ent,
                 "truncated": False,
+                # correlation handle: which feed identity produced this
+                "nhi_identity_key": key,
             }
             findings.append(finding)
 
@@ -793,6 +849,103 @@ def lifecycle_dashboard_rows(lifecycle_evidence):
             "cross_source": xsrc.get("merged_at") or "-",
         })
     return rows
+
+
+def correlate_nhi_sources(findings, lifecycle_evidence):
+    """Correlate graph-derived NHI findings with feed-derived lifecycle
+    findings **per workload identity**.
+
+    The two assessment sources are complementary and, without correlation,
+    an identity orphaned in the graph (AZ-041) and attestation-overdue in the
+    logs (AZ-060) would surface as two unrelated findings. This joins them on
+    the identifiers both sides actually carry: the Entra application /
+    service-principal object id and the display name.
+
+    Mutates each finding in place by adding a ``nhi_correlation`` block and
+    returns the list of findings for convenience. Deterministic: identity
+    keys and finding ids are sorted, and nothing is invented when either
+    source is absent (a no-feed run simply yields no correlated identities).
+
+    ``nhi_correlation`` = {
+        "identity": "<display label>",
+        "app_id": "<appId or null>",
+        "graph_findings": [...],       # NHI governance ids from Neo4j
+        "lifecycle_findings": [...],   # lifecycle ids from the feed
+        "both_sources": True,          # appears in both sources
+    }
+    """
+    if not findings:
+        return findings
+    if not lifecycle_evidence:
+        return findings
+
+    # index lifecycle identities by every identifier we can join on
+    life_index = {}
+    for key, entry in (lifecycle_evidence or {}).items():
+        ident = entry.get("identity") or {}
+        labels = {key}
+        for attr in ("app_id", "object_id", "service_principal_name",
+                     "display_name"):
+            v = ident.get(attr)
+            if v:
+                labels.add(str(v).strip().lower())
+        for lbl in labels:
+            life_index.setdefault(lbl, key)
+
+    # index graph findings: NHI governance ids only
+    nhi_graph = [
+        f for f in findings
+        if str(f.get("id", "")).startswith(("AZ_",)) and not str(f.get("id", "")).startswith("AZ_LC_")
+    ]
+    nhi_life = [f for f in findings if str(f.get("id", "")).startswith("AZ_LC_")]
+
+    graph_hits = {}
+    for f in nhi_graph:
+        for ev in (f.get("evidence") or []):
+            if not isinstance(ev, dict):
+                continue
+            for field in ("AppId", "appId", "ApplicationId", "ObjectId",
+                          "objectId", "ServicePrincipalObjectId", "Principal",
+                          "Application", "AppDisplayName", "DisplayName",
+                          "ServicePrincipalName"):
+                v = ev.get(field)
+                if not v or not isinstance(v, str):
+                    continue
+                hit = life_index.get(v.strip().lower())
+                if hit:
+                    graph_hits.setdefault(hit, set()).add(f["id"])
+
+    life_hits = {}
+    for f in nhi_life:
+        key = f.get("nhi_identity_key")
+        if key and key in graph_hits:
+            life_hits.setdefault(key, set())
+
+    for key in sorted(set(graph_hits) | set(life_hits)):
+        entry = lifecycle_evidence.get(key) or {}
+        ident = entry.get("identity") or {}
+        graph_ids = sorted(graph_hits.get(key, set()))
+        life_ids = sorted({
+            f["id"] for f in nhi_life if f.get("nhi_identity_key") == key
+        })
+        block = {
+            "identity": _identity_display(entry),
+            "app_id": ident.get("app_id"),
+            "graph_findings": graph_ids,
+            "lifecycle_findings": life_ids,
+            "both_sources": bool(graph_ids and life_ids),
+        }
+        for f in findings:
+            if f.get("nhi_identity_key") == key or (
+                f in nhi_graph and f["id"] in graph_ids
+            ):
+                f["nhi_correlation"] = dict(block)
+
+    # consume the internal correlation handle so exporters only ever see the
+    # documented finding keys
+    for f in findings:
+        f.pop("nhi_identity_key", None)
+    return findings
 
 
 def main():

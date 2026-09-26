@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from analytics.nhi_lifecycle import (
     LIFECYCLE_KEYS,
     lifecycle_dashboard_rows,
+    correlate_nhi_sources,
     LIFECYCLE_FINDING_DEFS,
     load_lifecycle_feed,
     feed_summary,
@@ -378,3 +379,96 @@ def test_cache_restore_tuple_with_inline_dict_is_loaded():
     ev = load_lifecycle_feed(("__nhi_cache__", _STRUCTURED_FEED))
     assert ev
     assert build_lifecycle_findings(ev)
+
+
+# --- Two-source NHI correlation (graph + logs) ---
+_CORR_APP = "11111111-2222-3333-4444-555555555555"
+_CORR_FEED = {
+    "value": [
+        {
+            "appId": _CORR_APP,
+            "DisplayName": "Contoso Billing SP",
+            "createdDateTime": "2026-09-01T00:00:00Z",
+            "userAgent": "attestation overdue orphan no owner nhifeed",
+            "conditionalAccessStatus": "attestation overdue",
+            "authenticationRequirement": "federated",
+            "attestationStatus": "overdue",
+            "attestationWindowDays": 90,
+        }
+    ]
+}
+
+
+def _graph_nhi_finding():
+    """A graph-derived NHI governance finding for the same identity."""
+    return {
+        "id": "AZ_SP_NO_OWNER",
+        "title": "Unowned Service Principals",
+        "group": "nhi_governance",
+        "source": "Azure",
+        "severity": "HIGH",
+        "evidence": [{"Principal": "Contoso Billing SP", "AppId": _CORR_APP}],
+        "ad_objects": {},
+        "has_evidence": True,
+        "confidence": "Confirmed",
+    }
+
+
+def test_correlation_binds_graph_and_lifecycle_findings_for_one_identity():
+    """An identity orphaned in the graph (AZ-041) and attestation-overdue in
+    the logs (AZ-060) must surface as ONE correlated identity, not two
+    unrelated findings."""
+    ev = load_lifecycle_feed(_CORR_FEED)
+    findings = [_graph_nhi_finding()] + build_lifecycle_findings(ev)
+    correlate_nhi_sources(findings, ev)
+    corr = [f["nhi_correlation"] for f in findings if "nhi_correlation" in f]
+    assert corr, "expected a correlation block on both sides"
+    for c in corr:
+        assert c["both_sources"] is True, c
+        assert c["app_id"] == _CORR_APP, c
+        assert "AZ_SP_NO_OWNER" in c["graph_findings"], c
+        assert "AZ_LC_ATTESTATION_OVERDUE" in c["lifecycle_findings"], c
+
+
+def test_correlation_does_not_invent_matches_for_unknown_identities():
+    """A graph finding whose AppId is absent from the feed gets no
+    correlation block - nothing is fabricated."""
+    ev = load_lifecycle_feed(_CORR_FEED)
+    other = _graph_nhi_finding()
+    other["evidence"] = [{"Principal": "Unknown SP",
+                          "AppId": "99999999-9999-9999-9999-999999999999"}]
+    findings = [other] + build_lifecycle_findings(ev)
+    correlate_nhi_sources(findings, ev)
+    assert "nhi_correlation" not in findings[0]
+
+
+def test_correlation_is_a_noop_without_feed():
+    """No feed -> graph findings are returned untouched (baseline safe)."""
+    findings = [_graph_nhi_finding()]
+    out = correlate_nhi_sources(findings, {})
+    assert out is findings
+    assert "nhi_correlation" not in findings[0]
+
+
+def test_lifecycle_findings_carry_baseline_convention_ad_objects():
+    """Lifecycle findings must populate the same ad_objects buckets the
+    exporters read (service_principals / applications), not an empty
+    AD-only schema."""
+    ev = load_lifecycle_feed(_CORR_FEED)
+    for f in build_lifecycle_findings(ev):
+        objs = f["ad_objects"]
+        for bucket in ("service_principals", "applications", "relationships",
+                       "users", "groups", "key_vaults", "tenants"):
+            assert bucket in objs, bucket
+        assert objs["service_principals"], f["id"]
+        assert _CORR_APP in " ".join(objs["service_principals"]), f["id"]
+
+
+def test_correlation_handle_is_not_leaked_to_exporters():
+    """The internal identity handle must be consumed so exporters only see
+    documented finding keys."""
+    ev = load_lifecycle_feed(_CORR_FEED)
+    findings = [_graph_nhi_finding()] + build_lifecycle_findings(ev)
+    correlate_nhi_sources(findings, ev)
+    for f in findings:
+        assert "nhi_identity_key" not in f, f["id"]

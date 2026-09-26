@@ -169,6 +169,20 @@ A lifecycle feed (AZ-055 → AZ-062, above) is **optional and gated** — when s
 
 When a lifecycle feed is supplied, the app also renders a **per-identity NHI Lifecycle Dashboard** (`lifecycle_dashboard_rows()` → feed-gated `st.dataframe`): workload identity, last sign-in, sign-in count, activity period, credential type, lifecycle stages, attestation / rotation / onboarding / cross-source status. With no feed the dashboard renders nothing and the 80-finding baseline is untouched.
 
+### NHI two-source correlation (graph + logs)
+
+The 14 NHI governance findings (AZ-041 → AZ-054) are **graph-derived** — they come from AzureHound Cypher in `collectors/azure_queries.py` and prove structural posture: ownership, consent, privilege, managed-identity sprawl, stale/legacy identities. The graph contains **no sign-in or audit data at all**.
+
+The 8 NHI lifecycle findings (AZ-055 → AZ-062) are **log-derived** — they come from the optional Entra sign-in/audit feed and prove temporal/behavioral lifecycle: is the identity still authenticating, when did it lose its owner, is its attestation or rotation overdue, is the sign-in anomalous.
+
+The two sets are **complementary, not redundant** — neither source is sufficient alone, and the union is the complete NHI assessment. When a feed is supplied, `correlate_nhi_sources()` binds them **per workload identity** (Entra `AppId` / object id / display name) and attaches a `nhi_correlation` block to both sides:
+
+```
+nhi_correlation = { identity, app_id, graph_findings[], lifecycle_findings[], both_sources }
+```
+
+So an identity that is unowned *in the graph* and attestation-overdue *in the logs* is reported as one correlated identity rather than two unrelated findings. Identities present in only one source are never given a fabricated match, and with no feed the graph findings are returned untouched.
+
 Data source: BloodHound CE (Active Directory) + AzureHound (Entra ID) via Neo4j graph database. All findings are evidence-based using actual graph relationships and attack paths, not theoretical configuration checks.
 
 Compliance mappings available: CIS Controls, NIST Cybersecurity Framework, ISO 27001, SA 315 (ICAI), DPDP Act 2023, OWASP NHI Top 10 (applied to workload-identity findings).

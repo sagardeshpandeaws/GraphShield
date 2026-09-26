@@ -547,7 +547,19 @@ if st.session_state.findings is None or reload_btn or version_changed:
             )
             lifecycle_evidence = load_lifecycle_feed(lifecycle_feed)
             if lifecycle_evidence:
-                findings = findings + build_lifecycle_findings(lifecycle_evidence)
+                # Graph-derived NHI governance findings (AZ-041->AZ-054) and
+                # feed-derived lifecycle findings (AZ-055->AZ-062) are
+                # complementary: the graph proves ownership/privilege posture,
+                # the logs prove temporal/behavioral lifecycle. Concatenating
+                # them would show one identity as unrelated findings, so bind
+                # them per workload identity (AppId / display name) before the
+                # risk + chain stages see the combined set.
+                from analytics.nhi_lifecycle import (
+                    correlate_nhi_sources as _correlate_nhi,
+                )
+                _nhi_feed_findings = build_lifecycle_findings(lifecycle_evidence)
+                findings = findings + _nhi_feed_findings
+                _correlate_nhi(findings, lifecycle_evidence)
         except Exception:
             pass  # deterministic no-op on any feed/adapter failure
 
