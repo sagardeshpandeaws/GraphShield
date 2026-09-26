@@ -1,6 +1,7 @@
 import requests
 import json
 from config import OLLAMA_URL, OLLAMA_MODEL
+from analytics.nhi_lifecycle import corroboration_label
 
 
 def ask_ollama(
@@ -15,7 +16,7 @@ def ask_ollama(
 
         ad = f.get("ad_objects", {})
 
-        safe_findings.append({
+        entry = {
 
             "id": f.get("id"),
             "title": f.get("title"),
@@ -32,7 +33,16 @@ def ask_ollama(
             "tenants": ad.get("tenants", []),
             "computers": ad.get("computers", []),
             "relationships": ad.get("relationships", [])
-        })
+        }
+
+        # NHI assessment only: attach the graph/log corroboration summary.
+        # The key is omitted entirely for every other assessment so the
+        # prompt for non-NHI findings is unchanged.
+        nhi_label = corroboration_label(f)
+        if nhi_label:
+            entry["nhi_corroboration"] = nhi_label
+
+        safe_findings.append(entry)
 
     safe_chains = []
 
@@ -61,6 +71,44 @@ def ask_ollama(
     hybrid_line = "- Cover hybrid AD-to-Cloud attack paths where applicable" if both else ""
     remediate_line = "- Separate AD and Azure/Entra tasks where applicable" if both else f"- Focus on {scope_text} tasks"
 
+    # NHI assessment only: identities confirmed by BOTH the Neo4j graph and the
+    # Entra sign-in/audit log feed. Deduplicated per identity and sorted, so the
+    # prompt stays deterministic. Empty when there is no feed or no overlap,
+    # which keeps the prompt byte-identical to the pre-correlation behaviour.
+    corroborated = {}
+    for f in findings:
+        corr = f.get("nhi_correlation") or {}
+        if not corr.get("both_sources"):
+            continue
+        ident = corr.get("identity") or corr.get("app_id")
+        if not ident:
+            continue
+        corroborated.setdefault(ident, {
+            "identity": ident,
+            "app_id": corr.get("app_id"),
+            "neo4j_findings": list(corr.get("graph_findings") or []),
+            "log_findings": list(corr.get("lifecycle_findings") or []),
+        })
+    nhi_corroborated = [corroborated[k] for k in sorted(corroborated)]
+
+    nhi_block = ""
+    nhi_output = ""
+    if nhi_corroborated:
+        nhi_block = f"""
+---
+
+NON-HUMAN IDENTITY - GRAPH + LOG CORROBORATION (NHI assessment only):
+{json.dumps(nhi_corroborated, indent=2)}
+"""
+        nhi_output = """
+# 6. NON-HUMAN IDENTITY CORROBORATION
+- Cover ONLY the workload identities listed in the CORROBORATION block above; ignore all other identities
+- State that each is confirmed by two independent sources: the Neo4j graph and the Entra sign-in/audit log feed
+- Explain what each source contributes: the graph proves structural posture (ownership, privilege, consent, staleness), the logs prove temporal/behavioral lifecycle (recent activity, dormancy, attestation, rotation, anomalous sign-ins)
+- Because both sources agree, rank these above single-source findings and give one combined remediation priority per identity
+- Do not invent identities or findings that are not listed
+"""
+
     prompt = f"""
 You are a Principal Identity Security Architect.
 
@@ -84,7 +132,7 @@ ATTACK CHAINS:
 
 RISK SCORE:
 {json.dumps(risk or {}, indent=2)}
-
+{nhi_block}
 ---
 
 OUTPUT FORMAT (STRICT):
@@ -108,7 +156,7 @@ OUTPUT FORMAT (STRICT):
 - Week 1 / Week 2 / Week 3 / Week 4 breakdown
 - {remediate_line}
 - Actionable security engineering tasks
-
+{nhi_output}
 Keep it concise, executive-ready, and structured.
 """
 

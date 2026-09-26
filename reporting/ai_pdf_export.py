@@ -10,6 +10,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
 from datetime import datetime
 from analytics.groups import GROUPS
+from analytics.nhi_lifecycle import NHI_GROUP
 from config import LOGO_PATH
 
 
@@ -349,6 +350,55 @@ def export_ai_pdf(text, filename, findings=None, chains=None, risk=None, env_sta
         ]))
         content.append(rt)
         content.append(Spacer(1, 10))
+
+        # NHI assessment only: identities independently confirmed by the Neo4j
+        # graph AND the Entra sign-in/audit log feed. Rendered only inside the
+        # Non-Human Identity Governance section, and only when such a match
+        # exists, so every other assessment section is unchanged.
+        if g == NHI_GROUP:
+            seen = {}
+            for f in (findings or []):
+                corr = f.get("nhi_correlation") or {}
+                if not corr.get("both_sources"):
+                    continue
+                ident = corr.get("identity") or corr.get("app_id")
+                if ident:
+                    seen.setdefault(ident, {
+                        "graph": ", ".join(corr.get("graph_findings") or []) or "-",
+                        "logs": ", ".join(corr.get("lifecycle_findings") or []) or "-",
+                    })
+            if seen:
+                content.append(Paragraph(
+                    "Graph + Log Corroboration", H3))
+                content.append(Paragraph(
+                    "These workload identities are confirmed by two independent "
+                    "sources. The Neo4j graph proves structural posture (ownership, "
+                    "privilege, consent, staleness); the Entra sign-in and audit "
+                    "logs prove temporal and behavioural lifecycle (recent "
+                    "activity, dormancy, attestation, rotation, anomalous "
+                    "sign-ins). Because both sources agree, these are ranked "
+                    "above single-source findings.", B))
+                corr_rows = [["Workload Identity", "Neo4j Graph Findings",
+                              "Entra Log Findings"]]
+                for ident in sorted(seen):
+                    corr_rows.append([_safe_escape(ident),
+                                      _safe_escape(seen[ident]["graph"]),
+                                      _safe_escape(seen[ident]["logs"])])
+                ct = Table(corr_rows, colWidths=[tw(30), tw(35), tw(35)])
+                ct.setStyle(TableStyle([
+                    ("BACKGROUND", (0,0),(-1,0), NAVY),
+                    ("TEXTCOLOR", (0,0),(-1,0), colors.white),
+                    ("FONTNAME", (0,0),(-1,0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0,0),(-1,-1), 8.5),
+                    ("GRID", (0,0),(-1,-1), 0.3, BORDER),
+                    ("ROWBACKGROUNDS", (0,1),(-1,-1),
+                     [colors.HexColor("#f8fafc"), colors.white]),
+                    ("VALIGN", (0,0),(-1,-1), "TOP"),
+                    ("TOPPADDING", (0,0),(-1,-1), 5),
+                    ("BOTTOMPADDING", (0,0),(-1,-1), 5),
+                ]))
+                content.append(ct)
+                content.append(Spacer(1, 10))
     content.append(Spacer(1, 6))
 
     content.append(PageBreak())

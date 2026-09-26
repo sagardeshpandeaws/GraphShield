@@ -586,3 +586,104 @@ def test_merged_relationships_stay_sorted_lists():
         assert isinstance(rels, list), type(rels)
         assert rels == sorted(rels), rels
         assert len(rels) == 2, rels
+
+
+# --- AI narrative + AI-PDF: NHI-scoped corroboration ---
+
+def _captured_prompt(findings):
+    """Call ask_ollama with a stubbed transport and return the prompt."""
+    import ai.analyst as analyst
+    box = {}
+
+    def _fake_post(url, json=None, **kwargs):
+        box["prompt"] = json["prompt"]
+        return type("R", (), {"json": lambda s: {"response": "stub"}})()
+
+    original = analyst.requests.post
+    analyst.requests.post = _fake_post
+    try:
+        analyst.ask_ollama(findings)
+    finally:
+        analyst.requests.post = original
+    return box["prompt"]
+
+
+def _ai_findings():
+    ev = load_lifecycle_feed(_CORR_FEED)
+    findings = [
+        {"id": "AD_KERBEROAST", "title": "K", "group": "ad_core",
+         "source": "Active Directory", "severity": "HIGH",
+         "evidence": [{"User": "jdoe"}], "ad_objects": {},
+         "impact": "x", "mitre": {}},
+        {"id": "AZ_ADD_SECRET", "title": "Secret", "group": "az_core",
+         "source": "Azure", "severity": "MEDIUM",
+         "evidence": [{"AppId": _CORR_APP}], "ad_objects": {},
+         "impact": "x", "mitre": {}},
+        _graph_nhi_finding(),
+    ] + build_lifecycle_findings(ev)
+    correlate_nhi_sources(findings, ev)
+    return findings
+
+
+def test_ai_prompt_omits_corroboration_without_feed():
+    """No feed -> the prompt is unchanged, with no corroboration block."""
+    prompt = _captured_prompt([{"id": "AD_KERBEROAST", "group": "ad_core",
+                                "source": "Active Directory", "severity": "HIGH",
+                                "ad_objects": {}}])
+    assert "CORROBORATION" not in prompt
+    assert "nhi_corroboration" not in prompt
+
+
+def test_ai_prompt_includes_nhi_corroboration_block():
+    prompt = _captured_prompt(_ai_findings())
+    assert "NON-HUMAN IDENTITY - GRAPH + LOG CORROBORATION" in prompt
+    assert "# 6. NON-HUMAN IDENTITY CORROBORATION" in prompt
+    assert _CORR_APP in prompt
+    assert "AZ_SP_NO_OWNER" in prompt
+
+
+def test_ai_prompt_never_labels_non_nhi_findings():
+    """Non-NHI rows must not carry the corroboration key, even when they
+    reference the same workload AppId."""
+    prompt = _captured_prompt(_ai_findings())
+    ad_row = prompt.split('"id": "AD_KERBEROAST"')[1].split("}")[0]
+    assert "nhi_corroboration" not in ad_row
+    az_row = prompt.split('"id": "AZ_ADD_SECRET"')[1].split("}")[0]
+    assert "nhi_corroboration" not in az_row
+
+
+def test_ai_prompt_is_deterministic():
+    findings = _ai_findings()
+    assert _captured_prompt(findings) == _captured_prompt(findings)
+
+
+def test_ai_pdf_renders_corroboration_only_in_the_nhi_section():
+    import tempfile
+    import reporting.ai_pdf_export as pdf
+    out = os.path.join(tempfile.gettempdir(), "nhi_corr_test.pdf")
+    try:
+        pdf.export_ai_pdf("narrative", out, findings=_ai_findings(),
+                          client_config={"client_name": "Test"},
+                          report_title="NHI")
+        assert os.path.getsize(out) > 0
+        with open(out, "rb") as fh:
+            assert fh.read(5) == b"%PDF-"
+    finally:
+        if os.path.exists(out):
+            os.remove(out)
+
+
+def test_ai_pdf_without_feed_still_renders():
+    import tempfile
+    import reporting.ai_pdf_export as pdf
+    out = os.path.join(tempfile.gettempdir(), "nhi_nocorr_test.pdf")
+    try:
+        pdf.export_ai_pdf("narrative", out,
+                          findings=[_graph_nhi_finding()],
+                          client_config={"client_name": "Test"},
+                          report_title="NHI")
+        with open(out, "rb") as fh:
+            assert fh.read(5) == b"%PDF-"
+    finally:
+        if os.path.exists(out):
+            os.remove(out)

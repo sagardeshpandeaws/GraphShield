@@ -187,6 +187,8 @@ So an identity that is unowned *in the graph* and attestation-overdue *in the lo
 
 The exported reports carry this as a final `Corroboration (NHI)` column (CSV and the Excel *Findings Register*), left empty for every finding outside the NHI assessment. It is appended last so the documented `R`-`U` worksheet columns (Status, Owner, Due Date, Notes) keep their positions.
 
+The AI outputs are scoped identically. `ai/analyst.py` adds a `NON-HUMAN IDENTITY - GRAPH + LOG CORROBORATION` prompt block and a section 6 **only** when corroborated identities exist, and the per-finding `nhi_corroboration` key is omitted for every non-NHI finding, so the prompt without a feed is byte-identical to the pre-correlation behaviour. `reporting/ai_pdf_export.py` renders a *Graph + Log Corroboration* table inside the Non-Human Identity Governance section only.
+
 Data source: BloodHound CE (Active Directory) + AzureHound (Entra ID) via Neo4j graph database. All findings are evidence-based using actual graph relationships and attack paths, not theoretical configuration checks.
 
 Compliance mappings available: CIS Controls, NIST Cybersecurity Framework, ISO 27001, SA 315 (ICAI), DPDP Act 2023, OWASP NHI Top 10 (applied to workload-identity findings).
