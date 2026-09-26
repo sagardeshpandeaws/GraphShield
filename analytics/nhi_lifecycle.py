@@ -693,6 +693,10 @@ LIFECYCLE_FINDING_DEFS = {
 # lifecycle findings carry the same ad_objects shape as graph-derived
 # findings and every exporter (CSV/Excel/PDF/AI-PDF) renders the Azure
 # sections for them instead of empty lists.
+# Report group that defines the NHI assessment scope. Correlation is applied
+# to this group plus the AZ_LC_* lifecycle findings only.
+NHI_GROUP = "nhi_governance"
+
 _AD_BUCKETS = (
     "users", "groups", "computers", "gpos", "organizational_units", "domains",
     "service_principals", "managed_identities", "applications", "key_vaults",
@@ -729,7 +733,10 @@ def _ad_objects_for(entry):
     if ident.get("display_name"):
         ent["applications"].add(ident["display_name"])
     ent["relationships"].add(label)
-    return ent
+    # Exporters receive sorted *lists*, matching
+    # finding_enrichment._buckets_to_lists(). Returning sets here would break
+    # csv_export (which slices ad_objects values with [:5]).
+    return {k: sorted(v) for k, v in ent.items()}
 
 
 def build_lifecycle_findings(lifecycle_evidence):
@@ -806,7 +813,10 @@ def build_lifecycle_findings(lifecycle_evidence):
                 cur["evidence"].append(ev)
         rel = cur["ad_objects"].get("relationships")
         if rel is not None and f["ad_objects"].get("relationships"):
-            rel |= f["ad_objects"]["relationships"]
+            # ad_objects values are sorted lists (export-ready), so merge as a
+            # stable sorted union rather than with set |=
+            merged_rel = set(rel) | set(f["ad_objects"]["relationships"])
+            cur["ad_objects"]["relationships"] = sorted(merged_rel)
     return [merged[fid] for fid in order]
 
 
@@ -863,6 +873,28 @@ def lifecycle_dashboard_rows(lifecycle_evidence, correlation=None):
     return rows
 
 
+def corroboration_label(finding):
+    """Report-ready summary of graph/log corroboration for one finding.
+
+    Scoped to the NHI assessment by construction: returns ``""`` for any
+    finding outside ``nhi_governance`` / ``AZ_LC_*`` and for NHI findings
+    with no both-sources match. That keeps the AD, az_core, az_zt_review and
+    az_arch_sim assessments completely unchanged.
+    """
+    if not finding:
+        return ""
+    fid = str(finding.get("id", ""))
+    if finding.get("group") != NHI_GROUP and not fid.startswith("AZ_LC_"):
+        return ""
+    corr = finding.get("nhi_correlation") or {}
+    if not corr.get("both_sources"):
+        return ""
+    graph_ids = ", ".join(corr.get("graph_findings") or []) or "-"
+    life_ids = ", ".join(corr.get("lifecycle_findings") or []) or "-"
+    return "%s | Neo4j: %s | Logs: %s" % (
+        corr.get("identity", ""), graph_ids, life_ids)
+
+
 def correlate_nhi_sources(findings, lifecycle_evidence, out=None):
     """Correlate graph-derived NHI findings with feed-derived lifecycle
     findings **per workload identity**.
@@ -907,12 +939,20 @@ def correlate_nhi_sources(findings, lifecycle_evidence, out=None):
         for lbl in labels:
             life_index.setdefault(lbl, key)
 
-    # index graph findings: NHI governance ids only
+    # Scope: Non-Human Identity assessment ONLY.
+    # Graph side = findings in the nhi_governance group (see groups.py); feed
+    # side = the AZ_LC_* lifecycle findings. Nothing else is ever correlated,
+    # so the AD / az_core / az_zt_review / az_arch_sim assessments are left
+    # byte-identical.
     nhi_graph = [
         f for f in findings
-        if str(f.get("id", "")).startswith(("AZ_",)) and not str(f.get("id", "")).startswith("AZ_LC_")
+        if f.get("group") == NHI_GROUP
+        and not str(f.get("id", "")).startswith("AZ_LC_")
     ]
-    nhi_life = [f for f in findings if str(f.get("id", "")).startswith("AZ_LC_")]
+    nhi_life = [
+        f for f in findings
+        if str(f.get("id", "")).startswith("AZ_LC_")
+    ]
 
     graph_hits = {}
     for f in nhi_graph:

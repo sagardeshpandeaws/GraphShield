@@ -25,6 +25,7 @@ from analytics.nhi_lifecycle import (
     LIFECYCLE_KEYS,
     lifecycle_dashboard_rows,
     correlate_nhi_sources,
+    corroboration_label,
     LIFECYCLE_FINDING_DEFS,
     load_lifecycle_feed,
     feed_summary,
@@ -505,3 +506,83 @@ def test_correlation_map_is_keyed_by_identity():
     assert len(corr) == 1
     key = next(iter(corr))
     assert corr[key]["both_sources"] is True
+
+
+# --- Scope: correlation is NHI-ASSESSMENT ONLY ---
+
+def test_non_nhi_finding_with_matching_appid_is_never_correlated():
+    """An az_core / ad_core finding that references the SAME workload AppId
+    must not be pulled into the NHI correlation - the two-source correlation
+    belongs to the NHI assessment only."""
+    ev = load_lifecycle_feed(_CORR_FEED)
+    az_core = {
+        "id": "AZ_ADD_SECRET", "group": "az_core", "source": "Azure",
+        "severity": "MEDIUM", "evidence": [{"AppId": _CORR_APP}],
+        "ad_objects": {}, "has_evidence": True, "confidence": "Confirmed",
+    }
+    ad_core = {
+        "id": "AD_KERBEROAST", "group": "ad_core", "source": "Active Directory",
+        "severity": "HIGH", "evidence": [{"User": "jdoe"}],
+        "ad_objects": {}, "has_evidence": True, "confidence": "Confirmed",
+    }
+    findings = [az_core, ad_core, _graph_nhi_finding()] + build_lifecycle_findings(ev)
+    correlate_nhi_sources(findings, ev)
+    assert "nhi_correlation" not in az_core, "az_core must not be correlated"
+    assert "nhi_correlation" not in ad_core, "ad_core must not be correlated"
+    assert "nhi_correlation" in findings[2], "nhi_governance must be correlated"
+
+
+def test_corroboration_label_is_empty_outside_the_nhi_assessment():
+    """Report label must be blank for every non-NHI finding and for NHI
+    findings that lack a both-sources match."""
+    assert corroboration_label(None) == ""
+    assert corroboration_label({"id": "AD_KERBEROAST", "group": "ad_core"}) == ""
+    assert corroboration_label({"id": "AZ_ADD_SECRET", "group": "az_core"}) == ""
+    # NHI finding with no correlation at all
+    assert corroboration_label({"id": "AZ_SP_NO_OWNER", "group": "nhi_governance"}) == ""
+    # NHI finding whose identity is single-source
+    assert corroboration_label({
+        "id": "AZ_SP_NO_OWNER", "group": "nhi_governance",
+        "nhi_correlation": {"both_sources": False},
+    }) == ""
+
+
+def test_corroboration_label_summarizes_both_sources():
+    ev = load_lifecycle_feed(_CORR_FEED)
+    findings = [_graph_nhi_finding()] + build_lifecycle_findings(ev)
+    correlate_nhi_sources(findings, ev)
+    for f in findings:
+        label = corroboration_label(f)
+        assert "Neo4j: AZ_SP_NO_OWNER" in label, label
+        assert "Logs: " in label, label
+        assert "AZ_LC_ATTESTATION_OVERDUE" in label, label
+        assert _CORR_APP in label, label
+
+
+def test_lifecycle_ad_objects_are_sorted_lists_for_exporters():
+    """Exporters slice ad_objects values (csv uses [:5]), so lifecycle
+    findings must emit sorted lists, never sets."""
+    ev = load_lifecycle_feed(_CORR_FEED)
+    for f in build_lifecycle_findings(ev):
+        for bucket, vals in f["ad_objects"].items():
+            assert isinstance(vals, list), (f["id"], bucket, type(vals))
+            assert vals == sorted(vals), (f["id"], bucket, vals)
+
+
+def test_merged_relationships_stay_sorted_lists():
+    """Two identities triggering one finding must merge relationships into a
+    stable sorted list, not a set."""
+    feed = {"value": [
+        {"appId": "11111111-1111-1111-1111-111111111111", "DisplayName": "A SP",
+         "userAgent": "orphaned no owner nhifeed",
+         "conditionalAccessStatus": "orphaned"},
+        {"appId": "22222222-2222-2222-2222-222222222222", "DisplayName": "B SP",
+         "userAgent": "orphaned no owner nhifeed",
+         "conditionalAccessStatus": "orphaned"},
+    ]}
+    ev = load_lifecycle_feed(feed)
+    for f in build_lifecycle_findings(ev):
+        rels = f["ad_objects"]["relationships"]
+        assert isinstance(rels, list), type(rels)
+        assert rels == sorted(rels), rels
+        assert len(rels) == 2, rels

@@ -11,6 +11,7 @@ from openpyxl.worksheet.hyperlink import Hyperlink
 from openpyxl.formatting.rule import FormulaRule
 from analytics.constants import COMPLIANCE_MAP, EXCLUSIONS_MAP
 from analytics.groups import GROUPS
+from analytics.nhi_lifecycle import corroboration_label as _corroboration
 from config import compute_env_stats, BASE_OUTPUT_DIR
 
 # â”€â”€â”€ Styling Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -356,7 +357,8 @@ def export_excel(findings, chains, filepath=None, client_config=None, risk=None,
         "CIS Controls v8.1", "NIST CSF 2.0", "ISO/IEC 27001:2022", "OWASP NHI Top 10 (2025)",
         "Affected Objects",
         "Impact", "Recommended Action", "Detection Strategy",
-        "Action Taken", "Status", "Owner", "Due Date", "Notes"
+        "Action Taken", "Status", "Owner", "Due Date", "Notes",
+        "Corroboration (NHI)"
     ]
     reg_cols = len(reg_headers)
 
@@ -461,6 +463,7 @@ def export_excel(findings, chains, filepath=None, client_config=None, risk=None,
             "",  # Owner
             "",  # Due Date
             "",  # Notes
+            _corroboration(f),  # Corroboration (NHI) - NHI assessment only
         ]
         for ci, val in enumerate(row_data, 1):
             cell = ws_reg.cell(row=r, column=ci, value=val)

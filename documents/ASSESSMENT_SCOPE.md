@@ -1,4 +1,4 @@
-# GraphShield Hybrid Identity Security Assessment — Complete Scope of Coverage
+﻿# GraphShield Hybrid Identity Security Assessment — Complete Scope of Coverage
 
 **Total: 80 findings** across 6 assessment groups (26 Active Directory + 54 Azure/Entra ID)
 
@@ -182,6 +182,10 @@ nhi_correlation = { identity, app_id, graph_findings[], lifecycle_findings[], bo
 ```
 
 So an identity that is unowned *in the graph* and attestation-overdue *in the logs* is reported as one correlated identity rather than two unrelated findings. Identities present in only one source are never given a fabricated match, and with no feed the graph findings are returned untouched.
+
+**Scope: NHI assessment only.** Correlation is applied strictly to the `nhi_governance` group (AZ-041 → AZ-054) plus the `AZ_LC_*` lifecycle findings. The AD Core, AD Attack Paths, Azure/Entra ID Core, Zero Trust Review and Security Architecture Simulation assessments are never correlated and are unaffected. A non-NHI finding that happens to reference the same workload `AppId` is deliberately left uncorrelated.
+
+The exported reports carry this as a final `Corroboration (NHI)` column (CSV and the Excel *Findings Register*), left empty for every finding outside the NHI assessment. It is appended last so the documented `R`-`U` worksheet columns (Status, Owner, Due Date, Notes) keep their positions.
 
 Data source: BloodHound CE (Active Directory) + AzureHound (Entra ID) via Neo4j graph database. All findings are evidence-based using actual graph relationships and attack paths, not theoretical configuration checks.
 

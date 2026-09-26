@@ -2,6 +2,7 @@ import csv
 import os
 from analytics.constants import COMPLIANCE_MAP
 from analytics.groups import GROUPS
+from analytics.nhi_lifecycle import corroboration_label as _corroboration
 
 def export_csv(findings, output, client_config=None, report_title=""):
     cfg = client_config or {}
@@ -17,7 +18,8 @@ def export_csv(findings, output, client_config=None, report_title=""):
         "Impact", "Remediation", "Detection",
         "Service Principals", "Managed Identities", "Applications", "Key Vaults",
         "Users", "Groups", "Computers",
-        "Source Node", "Target Node", "Attack Path"
+        "Source Node", "Target Node", "Attack Path",
+        "Corroboration (NHI)"
     ]
 
     with open(output, "w", newline="", encoding="utf-8-sig") as f:
@@ -78,14 +80,17 @@ def export_csv(findings, output, client_config=None, report_title=""):
 
             entity_cols = [az_sp, az_mi, az_apps, az_kv, users, groups_csv, comps]
 
+            # NHI assessment only: "" for every other finding group
+            corr = _corroboration(fnd)
+
             relationships = ad.get("relationships", [])
 
             if not relationships:
-                writer.writerow(base + entity_cols + ["", "", ""])
+                writer.writerow(base + entity_cols + ["", "", "", corr])
                 continue
 
             for rel in relationships:
                 parts = [x.strip() for x in rel.split("\u2192")]
                 source_node = parts[0] if parts else ""
                 target_node = parts[-1] if len(parts) > 1 else ""
-                writer.writerow(base + entity_cols + [source_node, target_node, rel])
+                writer.writerow(base + entity_cols + [source_node, target_node, rel, corr])
