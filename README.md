@@ -58,6 +58,7 @@ See [documents/QUICKSTART_GUIDE.md](documents/QUICKSTART_GUIDE.md).
 | [USER_MANUAL.md](documents/USER_MANUAL.md) | Full feature reference, config, troubleshooting |
 | [QUERY_LOGIC.md](documents/QUERY_LOGIC.md) | How each Cypher finding query works |
 | [ASSESSMENT_SCOPE.md](documents/ASSESSMENT_SCOPE.md) | Finding catalog and scope |
+| [PROOF_REPORTS.md](documents/PROOF_REPORTS.md) | Generate all report formats from synthetic sample data |
 
 ## Building a Standalone EXE (optional)
 

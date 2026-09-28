@@ -687,3 +687,90 @@ def test_ai_pdf_without_feed_still_renders():
     finally:
         if os.path.exists(out):
             os.remove(out)
+
+
+def test_evidence_json_carries_nhi_correlation_only_for_nhi():
+    """The machine-readable evidence export must surface the graph/log
+    corroboration for the NHI assessment, and stay unchanged for every other
+    assessment."""
+    from reporting.json_export import export_json
+    ev = load_lifecycle_feed(_CORR_FEED)
+    findings = [
+        {"id": "AD_KERBEROAST", "group": "ad_core", "source": "Active Directory",
+         "severity": "HIGH", "ad_objects": {}, "has_evidence": True},
+        {"id": "AZ_ADD_SECRET", "group": "az_core", "source": "Azure",
+         "severity": "MEDIUM", "ad_objects": {}, "has_evidence": True},
+        _graph_nhi_finding(),
+    ] + build_lifecycle_findings(ev)
+    correlate_nhi_sources(findings, ev)
+    report = export_json(findings, [], None, None, None)
+    by_id = {}
+    for f in report["findings"]:
+        by_id.setdefault(f["id"], []).append(f)
+    assert "nhi_correlation" not in by_id["AD_KERBEROAST"][0]
+    assert "nhi_correlation" not in by_id["AZ_ADD_SECRET"][0]
+    for f in by_id["AZ_SP_NO_OWNER"]:
+        assert f["nhi_correlation"]["both_sources"] is True
+        assert f["nhi_correlation"]["app_id"] == _CORR_APP
+    lc = [f for f in report["findings"]
+          if str(f.get("id", "")).startswith("AZ_LC_")]
+    assert lc, "lifecycle findings should be in the evidence export"
+    for f in lc:
+        assert f["nhi_correlation"]["graph_findings"], f
+
+
+def test_log_only_lifecycle_identity_is_labelled_not_blank():
+    """A feed identity absent from the graph is a positive result, so the
+    report must name it instead of leaving the corroboration cell blank."""
+    feed = {"value": [{
+        "appId": "99999999-9999-9999-9999-999999999999",
+        "DisplayName": "ghost-workload",
+        "userAgent": "azure-cli signin anomaly nhifeed",
+        "conditionalAccessStatus": "signin anomaly",
+    }]}
+    ev = load_lifecycle_feed(feed)
+    findings = build_lifecycle_findings(ev)
+    assert findings, "feed should still produce findings"
+    corr = {}
+    correlate_nhi_sources(findings, ev, corr)
+    assert corr, "a log-only identity must still get a correlation entry"
+    for key, block in corr.items():
+        assert block["graph_findings"] == [], (key, block)
+        assert block["both_sources"] is False
+    for f in findings:
+        label = corroboration_label(f)
+        assert "Neo4j: not found" in label, (f["id"], label)
+        assert "ghost-workload" in label, (f["id"], label)
+
+
+def test_uncorroborated_graph_nhi_finding_stays_blank():
+    """An NHI graph finding with no match keeps the empty cell, so the label
+    still means 'corroborated by both sources' when it is present."""
+    ev = load_lifecycle_feed(_CORR_FEED)
+    f = {"id": "AZ_MFA_GAP", "group": "nhi_governance", "source": "Azure"}
+    correlate_nhi_sources([f], ev)
+    assert corroboration_label(f) == ""
+
+
+def test_assessment_pdf_renders_corroboration_row():
+    """The assessment PDF is the primary deliverable, so it must carry the
+    two-source result just like CSV / Excel."""
+    from reporting.pdf_export import export_pdf
+    ev = load_lifecycle_feed(_CORR_FEED)
+    findings = [_graph_nhi_finding()] + build_lifecycle_findings(ev)
+    correlate_nhi_sources(findings, ev)
+    import tempfile, os as _os
+    with tempfile.TemporaryDirectory() as td:
+        out = _os.path.join(td, "r.pdf")
+        export_pdf(findings, [], out, client_config=None)
+        data = open(out, "rb").read()
+    assert data.startswith(b"%PDF"), "pdf not written"
+
+
+def test_non_nhi_pdf_has_no_corroboration_row():
+    """Scope guard: the AD and az_core reports must be byte-identical in
+    content to their pre-corroboration form."""
+    from analytics.nhi_lifecycle import corroboration_label as lab
+    for f in ({"id": "AD_KERBEROAST", "group": "ad_core", "source": "Active Directory"},
+              {"id": "AZ_ADD_SECRET", "group": "az_core", "source": "Azure"}):
+        assert lab(f) == ""

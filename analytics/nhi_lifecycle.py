@@ -880,6 +880,11 @@ def corroboration_label(finding):
     finding outside ``nhi_governance`` / ``AZ_LC_*`` and for NHI findings
     with no both-sources match. That keeps the AD, az_core, az_zt_review and
     az_arch_sim assessments completely unchanged.
+
+    A feed identity the graph never contained is still a result worth
+    reporting ("logs found it, posture data did not"), so those lifecycle
+    findings get an explicit "Neo4j: not found" label instead of a blank cell
+    that would read the same as "no cross-source match".
     """
     if not finding:
         return ""
@@ -887,10 +892,15 @@ def corroboration_label(finding):
     if finding.get("group") != NHI_GROUP and not fid.startswith("AZ_LC_"):
         return ""
     corr = finding.get("nhi_correlation") or {}
-    if not corr.get("both_sources"):
+    if not corr:
         return ""
     graph_ids = ", ".join(corr.get("graph_findings") or []) or "-"
     life_ids = ", ".join(corr.get("lifecycle_findings") or []) or "-"
+    if not corr.get("both_sources"):
+        if fid.startswith("AZ_LC_") and not corr.get("graph_findings"):
+            return "%s | Neo4j: not found | Logs: %s" % (
+                corr.get("identity", ""), life_ids)
+        return ""
     return "%s | Neo4j: %s | Logs: %s" % (
         corr.get("identity", ""), graph_ids, life_ids)
 
@@ -920,6 +930,11 @@ def correlate_nhi_sources(findings, lifecycle_evidence, out=None):
         "lifecycle_findings": [...],   # lifecycle ids from the feed
         "both_sources": True,          # appears in both sources
     }
+
+    Feed identities that the graph never contained are included with
+    ``graph_findings: []`` and ``both_sources: False`` so reports can state
+    that the logs found a workload posture data did not. With no feed, or with
+    no lifecycle findings, nothing is attached.
     """
     if not findings:
         return findings
@@ -970,10 +985,15 @@ def correlate_nhi_sources(findings, lifecycle_evidence, out=None):
                 if hit:
                     graph_hits.setdefault(hit, set()).add(f["id"])
 
+    # Every feed identity that produced a lifecycle finding gets a correlation
+    # entry, including ones the graph has never seen: a workload present only
+    # in the logs is itself a result (posture data missed it) and must be
+    # reported rather than silently dropped. Those entries carry
+    # both_sources=False and an empty graph_findings list.
     life_hits = {}
     for f in nhi_life:
         key = f.get("nhi_identity_key")
-        if key and key in graph_hits:
+        if key:
             life_hits.setdefault(key, set())
 
     for key in sorted(set(graph_hits) | set(life_hits)):

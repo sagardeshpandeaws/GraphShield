@@ -2,6 +2,8 @@
 import os
 from datetime import datetime
 
+from analytics.nhi_lifecycle import corroboration_label
+
 
 def export_json(findings, chains, risk=None, output=None, client_config=None):
     cfg = client_config or {}
@@ -15,7 +17,7 @@ def export_json(findings, chains, risk=None, output=None, client_config=None):
 
     clean_findings = []
     for f in findings:
-        clean_findings.append({
+        entry = {
             "id": f.get("id"),
             "title": f.get("title"),
             "severity": f.get("severity"),
@@ -27,7 +29,13 @@ def export_json(findings, chains, risk=None, output=None, client_config=None):
             "compliance": f.get("compliance", {}),
             "ad_objects": f.get("ad_objects", {}),
             "has_evidence": f.get("has_evidence", False),
-        })
+        }
+        # NHI assessment only. The key is omitted for every other finding, so
+        # the JSON for non-NHI assessments is unchanged.
+        corr = f.get("nhi_correlation")
+        if corr:
+            entry["nhi_correlation"] = corr
+        clean_findings.append(entry)
 
     clean_chains = []
     for c in chains:

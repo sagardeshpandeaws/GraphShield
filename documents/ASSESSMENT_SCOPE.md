@@ -185,7 +185,9 @@ So an identity that is unowned *in the graph* and attestation-overdue *in the lo
 
 **Scope: NHI assessment only.** Correlation is applied strictly to the `nhi_governance` group (AZ-041 → AZ-054) plus the `AZ_LC_*` lifecycle findings. The AD Core, AD Attack Paths, Azure/Entra ID Core, Zero Trust Review and Security Architecture Simulation assessments are never correlated and are unaffected. A non-NHI finding that happens to reference the same workload `AppId` is deliberately left uncorrelated.
 
-The exported reports carry this as a final `Corroboration (NHI)` column (CSV and the Excel *Findings Register*), left empty for every finding outside the NHI assessment. It is appended last so the documented `R`-`U` worksheet columns (Status, Owner, Due Date, Notes) keep their positions.
+The exported reports carry this as a final `Corroboration (NHI)` column (CSV and the Excel *Findings Register*), left empty for every finding outside the NHI assessment. It is appended last so the documented `R`-`U` worksheet columns (Status, Owner, Due Date, Notes) keep their positions. The assessment PDF renders the same value as a `Corroboration (NHI)` attribute row on each finding, and the evidence JSON exposes the block as `nhi_correlation`.
+
+Every feed identity that produced a lifecycle finding gets a correlation entry, **including identities the graph has never contained**. Those carry `graph_findings: []` and `both_sources: false`, and are reported as `Neo4j: not found | Logs: <ids>` rather than a blank cell — a workload present only in the logs is a result in its own right (posture data missed it), and a blank would be indistinguishable from "no cross-source match".
 
 The AI outputs are scoped identically. `ai/analyst.py` adds a `NON-HUMAN IDENTITY - GRAPH + LOG CORROBORATION` prompt block and a section 6 **only** when corroborated identities exist, and the per-finding `nhi_corroboration` key is omitted for every non-NHI finding, so the prompt without a feed is byte-identical to the pre-correlation behaviour. `reporting/ai_pdf_export.py` renders a *Graph + Log Corroboration* table inside the Non-Human Identity Governance section only.
 

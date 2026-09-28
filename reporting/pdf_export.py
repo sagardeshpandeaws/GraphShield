@@ -13,6 +13,7 @@ from reportlab.pdfgen import canvas as pdfcanvas
 from datetime import datetime
 from analytics.constants import COMPLIANCE_MAP, SEVERITY_COLORS as SEV_HEX
 from analytics.groups import GROUPS
+from analytics.nhi_lifecycle import corroboration_label as _corroboration
 from config import compute_env_stats, BASE_OUTPUT_DIR, LOGO_PATH
 
 SEVERITY_COLORS = {
@@ -761,6 +762,10 @@ def export_pdf(findings, chains, output, client_config=None, risk=None, env_stat
              ["Source",f.get("source","")],
              ["Group", safe_escape(group_name)],
              ["MITRE ID",mitre.get("id","-")],["MITRE Technique",mitre.get("technique","-")],["MITRE Tactic",mitre.get("tactic","-")]]
+        # Two-source corroboration (NHI assessment only; blank everywhere else).
+        corr_label = _corroboration(f)
+        if corr_label:
+            d.append(["Corroboration (NHI)", safe_escape(corr_label)])
         domains = f.get("ad_objects", {}).get("domains", [])
         if domains:
             d.append(["Domains/Trusts", ", ".join(domains)])
